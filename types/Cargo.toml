@@ -1,0 +1,13 @@
+[package]
+name = "neuromorphic-types"
+authors = [
+    "International Centre for Neuromorphic Systems",
+    "Alexandre Marcireau",
+]
+version = "0.1.0"
+edition = "2021"
+license-file = "../LICENSE"
+homepage = "https://github.com/neuromorphicsystems/neuromorphic-rs/"
+repository = "https://github.com/neuromorphicsystems/neuromorphic-rs/"
+documentation = "https://docs.rs/neuromorphic-types/"
+readme = "../README.md"
