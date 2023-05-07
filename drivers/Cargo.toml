@@ -1,5 +1,5 @@
 [package]
-name = "neuromorphic_drivers"
+name = "neuromorphic-drivers"
 authors = [
     "International Centre for Neuromorphic Systems",
     "Alexandre Marcireau",
@@ -10,7 +10,7 @@ edition = "2021"
 license-file = "../LICENSE"
 homepage = "https://github.com/neuromorphicsystems/neuromorphic-rs/"
 repository = "https://github.com/neuromorphicsystems/neuromorphic-rs/"
-documentation = "https://docs.rs/neuromorphic_drivers/"
+documentation = "https://docs.rs/neuromorphic-drivers/"
 readme = "../README.md"
 
 [dependencies]
