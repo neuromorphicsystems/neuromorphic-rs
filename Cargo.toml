@@ -1,2 +1,8 @@
 [workspace]
-members = ["drivers", "types"]
+members = ["drivers", "python", "types"]
+
+[profile.release]
+panic = "abort"
+lto = true
+codegen-units = 1
+strip = true

@@ -1,0 +1,21 @@
+[project]
+name = "neuromorphic_drivers"
+description = "Neuromorphic devices drivers"
+readme = "README.md"
+license = {file = "LICENSE"}
+authors = [
+    {name = "International Centre for Neuromorphic Systems"},
+    {name = "Alexandre Marcireau"},
+]
+version = "0.1.0"
+requires-python = ">=3.8"
+dependencies = ["numpy>=1.24"]
+
+[project.urls]
+homepage = "https://github.com/neuromorphicsystems/neuromorphic-rs/"
+repository = "https://github.com/neuromorphicsystems/neuromorphic-rs/"
+documentation = "https://github.com/neuromorphicsystems/neuromorphic-rs/"
+
+[build-system]
+requires = ["maturin>=0.12", "numpy"]
+build-backend = "maturin"
