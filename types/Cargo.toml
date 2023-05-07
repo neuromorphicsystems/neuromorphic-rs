@@ -4,6 +4,7 @@ authors = [
     "International Centre for Neuromorphic Systems",
     "Alexandre Marcireau",
 ]
+description = "Shared Neuromorphic data types for drivers and processing frameworks"
 version = "0.1.0"
 edition = "2021"
 license-file = "../LICENSE"
