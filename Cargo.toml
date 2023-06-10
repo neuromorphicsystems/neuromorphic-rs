@@ -2,7 +2,6 @@
 members = ["drivers", "python", "types"]
 
 [profile.release]
-panic = "abort"
-lto = true
+lto = "fat"
 codegen-units = 1
 strip = true

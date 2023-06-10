@@ -1,0 +1,6 @@
+.venv
+python/neuromorphic_drivers/generated
+src/generated.rs
+tests/*.raw
+*.so
+__pycache__

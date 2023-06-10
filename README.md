@@ -7,7 +7,8 @@ cargo publish
 
 ```sh
 cd python
-python3 -m venv .env
-source .env/bin/activate
+python3 -m venv .venv
+source .venv/bin/activate
 pip install maturin
+maturin develop
 ```

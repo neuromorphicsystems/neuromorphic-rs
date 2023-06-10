@@ -19,3 +19,18 @@ documentation = "https://github.com/neuromorphicsystems/neuromorphic-rs/"
 [build-system]
 requires = ["maturin>=0.12", "numpy"]
 build-backend = "maturin"
+
+[tool.maturin]
+python-source = "python"
+
+[tool.black]
+extend-exclude = ".venv"
+
+[tool.pyright]
+typeCheckingMode = "basic"
+executionEnvironments = [
+    {root=".", venv=".venv"},
+]
+
+[tool.isort]
+profile = "black"

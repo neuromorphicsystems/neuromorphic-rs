@@ -1,20 +1,20 @@
-#[repr(u8)]
+#[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub enum DvsPolarity {
     Off = 0,
     On = 1,
 }
 
-#[repr(packed)]
+#[repr(C, packed)]
 #[derive(Debug, Copy, Clone)]
-pub struct DvsEvent<Timestamp, Width, Height> {
+pub struct DvsEvent<Timestamp, X, Y> {
     pub t: Timestamp,
-    pub x: Width,
-    pub y: Height,
+    pub x: X,
+    pub y: Y,
     pub polarity: DvsPolarity,
 }
 
-#[repr(u8)]
+#[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub enum AtisPolarity {
     Off = 0,
@@ -23,27 +23,26 @@ pub enum AtisPolarity {
     ExposureEnd = 3,
 }
 
-#[repr(packed)]
+#[repr(C, packed)]
 #[derive(Debug, Copy, Clone)]
-pub struct AtisEvent<Timestamp, Width, Height> {
+pub struct AtisEvent<Timestamp, X, Y> {
     pub t: Timestamp,
-    pub x: Width,
-    pub y: Height,
+    pub x: X,
+    pub y: Y,
     pub polarity: AtisPolarity,
 }
 
-#[repr(u8)]
+#[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub enum TriggerPolarity {
     Falling = 0,
     Rising = 1,
 }
 
-#[repr(packed)]
+#[repr(C, packed)]
 #[derive(Debug, Copy, Clone)]
 pub struct TriggerEvent<Timestamp, Id> {
     pub t: Timestamp,
-    pub system_t: std::time::Instant,
     pub id: Id,
     pub polarity: TriggerPolarity,
 }
