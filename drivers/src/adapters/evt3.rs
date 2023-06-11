@@ -28,8 +28,48 @@ impl Adapter {
         }
     }
 
-    pub fn estimate_dvs_events_length(slice: &[u8]) -> usize {
-        slice.len() / 2
+    pub fn events_lengths(&self, slice: &[u8]) -> (usize, usize) {
+        let mut dvs_events = 0_usize;
+        let mut trigger_events = 0_usize;
+        let mut x = self.x;
+        let mut y = self.y;
+        for index in 0..slice.len() / 2 {
+            let word = u16::from_le_bytes([slice[index * 2], slice[index * 2 + 1]]);
+            match word >> 12 {
+                0b0000 => {
+                    y = word & 0b11111111111;
+                }
+                0b0001 => (),
+                0b0010 => {
+                    x = word & 0b11111111111;
+                    if x < self.width && y < self.height {
+                        dvs_events += 1;
+                    }
+                }
+                0b0011 => {
+                    x = word & 0b11111111111;
+                }
+                0b0100 => {
+                    if x < self.width && y < self.height {
+                        dvs_events += (word & ((1 << std::cmp::min(12, self.width - x)) - 1))
+                            .count_ones() as usize;
+                        x += 12;
+                    }
+                }
+                0b0101 => {
+                    if x < self.width && y < self.height {
+                        dvs_events += (word & ((1 << std::cmp::min(8, self.width - x)) - 1))
+                            .count_ones() as usize;
+                        x += 8;
+                    }
+                }
+                0b1010 => {
+                    trigger_events += 1;
+                }
+                _ => (),
+            }
+        }
+        (dvs_events, trigger_events)
     }
 
     pub fn current_t(&self) -> u64 {
@@ -82,32 +122,34 @@ impl Adapter {
                 }
                 0b0100 => {
                     if self.x < self.width && self.y < self.height {
-                        for bit in 0..std::cmp::min(12, self.width - self.x) {
-                            if (word & (1 << bit)) > 0 {
+                        let set = word & ((1 << std::cmp::min(12, self.width - self.x)) - 1);
+                        for bit in 0..12 {
+                            if (set & (1 << bit)) > 0 {
                                 handle_dvs_event(neuromorphic_types::DvsEvent {
                                     t: self.t,
-                                    x: self.x,
+                                    x: self.x + bit,
                                     y: self.y,
                                     polarity: self.polarity,
                                 });
                             }
-                            self.x += 1;
                         }
+                        self.x += 12;
                     }
                 }
                 0b0101 => {
                     if self.x < self.width && self.y < self.height {
-                        for bit in 0..std::cmp::min(8, self.width - self.x) {
-                            if (word & (1 << bit)) > 0 {
+                        let set = word & ((1 << std::cmp::min(8, self.width - self.x)) - 1);
+                        for bit in 0..8 {
+                            if (set & (1 << bit)) > 0 {
                                 handle_dvs_event(neuromorphic_types::DvsEvent {
                                     t: self.t,
-                                    x: self.x,
+                                    x: self.x + bit,
                                     y: self.y,
                                     polarity: self.polarity,
                                 });
                             }
                         }
-                        self.x += 1;
+                        self.x += 8;
                     }
                 }
                 0b0110 => {

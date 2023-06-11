@@ -1,4 +1,4 @@
-#[repr(C)]
+#[repr(u8)]
 #[derive(Debug, Copy, Clone)]
 pub enum DvsPolarity {
     Off = 0,
@@ -14,7 +14,7 @@ pub struct DvsEvent<Timestamp, X, Y> {
     pub polarity: DvsPolarity,
 }
 
-#[repr(C)]
+#[repr(u8)]
 #[derive(Debug, Copy, Clone)]
 pub enum AtisPolarity {
     Off = 0,
@@ -32,7 +32,7 @@ pub struct AtisEvent<Timestamp, X, Y> {
     pub polarity: AtisPolarity,
 }
 
-#[repr(C)]
+#[repr(u8)]
 #[derive(Debug, Copy, Clone)]
 pub enum TriggerPolarity {
     Falling = 0,

@@ -27,7 +27,9 @@ pub enum Error {
 
     #[error("control transfer error (expected {expected:?}, read {read:?})")]
     Mismatch { expected: Vec<u8>, read: Vec<u8> },
-    // @DEV add special error for busy devices, should be ignored when scanning to support multiple cameras of the same type
+
+    #[error("the device is already used by another program")]
+    Busy,
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]

@@ -102,9 +102,34 @@ where
     Event: SetCell,
 {
     array: *mut numpy::npyffi::objects::PyArrayObject,
-    length: numpy::npyffi::types::npy_intp,
-    capacity: numpy::npyffi::types::npy_intp,
     phantom_data: std::marker::PhantomData<Event>,
+}
+
+pub struct StructuredArrayData<Event>
+where
+    Event: SetCell,
+{
+    pointer: *mut u8,
+    phantom_data: std::marker::PhantomData<Event>,
+}
+
+unsafe impl<Event> Send for StructuredArrayData<Event> where Event: SetCell {}
+
+impl<Event> StructuredArrayData<Event>
+where
+    Event: SetCell,
+{
+    #[inline]
+    pub fn set(&mut self, index: usize, event: Event) {
+        unsafe {
+            self.pointer
+                .offset((index * core::mem::size_of::<Event>()) as isize)
+                .copy_from(
+                    (&event as *const Event) as *const u8,
+                    core::mem::size_of::<Event>(),
+                )
+        }
+    }
 }
 
 impl<Event> StructuredArray<Event>
@@ -114,7 +139,7 @@ where
     fn new<const N: usize>(
         python: pyo3::Python,
         dtype: Dtype<N>,
-        mut capacity: numpy::npyffi::npy_intp,
+        mut length: numpy::npyffi::npy_intp,
     ) -> Self {
         let array = unsafe {
             numpy::PY_ARRAY_API.PyArray_NewFromDescr(
@@ -122,56 +147,27 @@ where
                 numpy::PY_ARRAY_API
                     .get_type_object(python, numpy::npyffi::array::NpyTypes::PyArray_Type),
                 dtype.into_py(python),
-                1_i32,
-                &mut capacity as *mut numpy::npyffi::npy_intp,
+                1,
+                &mut length as *mut numpy::npyffi::npy_intp,
                 std::ptr::null_mut(),
                 std::ptr::null_mut(),
-                0_i32,
+                0,
                 std::ptr::null_mut(),
             ) as *mut numpy::npyffi::objects::PyArrayObject
         };
+        assert!(!array.is_null(), "PyArray_NewFromDescr failed");
         Self {
             array,
-            length: 0,
-            capacity: std::cmp::max(capacity, 1),
             phantom_data: std::marker::PhantomData,
         }
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.length == 0
-    }
-
-    pub fn push(&mut self, python: pyo3::Python, event: Event) {
-        while self.length >= self.capacity {
-            self.capacity *= 2;
-            let mut dimensions = numpy::npyffi::objects::PyArray_Dims {
-                ptr: &mut self.capacity as *mut numpy::npyffi::types::npy_intp,
-                len: 1,
-            };
-            assert!(
-                !unsafe {
-                    numpy::PY_ARRAY_API.PyArray_Resize(
-                        python,
-                        self.array,
-                        &mut dimensions,
-                        1,
-                        numpy::npyffi::NPY_ORDER::NPY_ANYORDER,
-                    )
-                }
-                .is_null(),
-                "resizing the array to size {} failed",
-                self.capacity
-            );
+    pub unsafe fn data(&mut self, python: pyo3::Python) -> StructuredArrayData<Event> {
+        let mut index = 0;
+        StructuredArrayData {
+            pointer: numpy::PY_ARRAY_API.PyArray_GetPtr(python, self.array, &mut index) as *mut u8,
+            phantom_data: std::marker::PhantomData,
         }
-        event.set_cell(unsafe {
-            numpy::PY_ARRAY_API.PyArray_GetPtr(
-                python,
-                self.array,
-                &mut self.length as *mut numpy::npyffi::npy_intp,
-            )
-        } as *mut u8);
-        self.length += 1;
     }
 }
 
@@ -180,24 +176,6 @@ where
     Event: SetCell,
 {
     fn into_py(mut self, python: pyo3::Python) -> pyo3::PyObject {
-        let mut dimensions = numpy::npyffi::objects::PyArray_Dims {
-            ptr: &mut self.length as *mut numpy::npyffi::types::npy_intp,
-            len: 1,
-        };
-        assert!(
-            !unsafe {
-                numpy::PY_ARRAY_API.PyArray_Resize(
-                    python,
-                    self.array,
-                    &mut dimensions,
-                    1,
-                    numpy::npyffi::NPY_ORDER::NPY_ANYORDER,
-                )
-            }
-            .is_null(),
-            "resizing the array to size {} failed",
-            self.length
-        );
         let object = unsafe {
             pyo3::PyObject::from_owned_ptr(python, self.array as *mut pyo3::ffi::PyObject)
         };
@@ -226,9 +204,10 @@ const DVS_EVENTS_DTYPE: Dtype<4> = Dtype([
 ]);
 
 impl SetCell for neuromorphic_types::DvsEvent<u64, u16, u16> {
+    #[inline]
     fn set_cell(self, cell: *mut u8) {
         unsafe {
-            cell.offset(0).copy_from(
+            cell.copy_from(
                 (&self as *const Self) as *const u8,
                 core::mem::size_of::<Self>(),
             );
@@ -238,9 +217,9 @@ impl SetCell for neuromorphic_types::DvsEvent<u64, u16, u16> {
 
 pub fn dvs_events(
     python: pyo3::Python,
-    capacity: numpy::npyffi::npy_intp,
+    length: numpy::npyffi::npy_intp,
 ) -> StructuredArray<neuromorphic_types::DvsEvent<u64, u16, u16>> {
-    StructuredArray::new(python, DVS_EVENTS_DTYPE, capacity)
+    StructuredArray::new(python, DVS_EVENTS_DTYPE, length)
 }
 
 const TRIGGER_EVENTS_DTYPE: Dtype<3> = Dtype([
@@ -250,9 +229,10 @@ const TRIGGER_EVENTS_DTYPE: Dtype<3> = Dtype([
 ]);
 
 impl SetCell for neuromorphic_types::TriggerEvent<u64, u8> {
+    #[inline]
     fn set_cell(self, cell: *mut u8) {
         unsafe {
-            cell.offset(0).copy_from(
+            cell.copy_from(
                 (&self as *const Self) as *const u8,
                 core::mem::size_of::<Self>(),
             );
@@ -262,7 +242,7 @@ impl SetCell for neuromorphic_types::TriggerEvent<u64, u8> {
 
 pub fn trigger_events(
     python: pyo3::Python,
-    capacity: numpy::npyffi::npy_intp,
+    length: numpy::npyffi::npy_intp,
 ) -> StructuredArray<neuromorphic_types::TriggerEvent<u64, u8>> {
-    StructuredArray::new(python, TRIGGER_EVENTS_DTYPE, capacity)
+    StructuredArray::new(python, TRIGGER_EVENTS_DTYPE, length)
 }

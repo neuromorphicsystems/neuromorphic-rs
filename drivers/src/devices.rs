@@ -71,8 +71,8 @@ macro_rules! register {
 
             pub struct ListedDevice {
                 pub device_type: Type,
-                pub serial: String,
                 pub speed: usb::Speed,
+                pub serial: Result<String, usb::Error>,
             }
 
             pub fn list_devices() -> rusb::Result<Vec<ListedDevice>> {
@@ -81,12 +81,12 @@ macro_rules! register {
                 let mut result = Vec::new();
                 $(
                     result.extend(
-                        $module::Device::list_serials_and_speeds(&devices)?
+                        $module::Device::list_devices(&devices)?
                             .into_iter()
-                            .map(|(serial, speed)| ListedDevice {
+                            .map(|listed_device| ListedDevice {
                                 device_type: Type::[<$module:camel>],
-                                serial,
-                                speed,
+                                speed: listed_device.speed,
+                                serial: listed_device.serial,
                             }),
                     );
                 )+

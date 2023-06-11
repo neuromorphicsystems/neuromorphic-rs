@@ -51,6 +51,7 @@ impl device::Usb for Device {
     };
 
     fn read_serial(handle: &mut rusb::DeviceHandle<rusb::Context>) -> rusb::Result<String> {
+        handle.claim_interface(0)?;
         Ok("".to_owned())
     }
 
@@ -66,13 +67,12 @@ impl device::Usb for Device {
     where
         IntoError: From<Self::Error> + Clone + Send,
     {
-        let mut handle = Self::handle_from_serial(event_loop.context(), serial)?;
-        handle.claim_interface(0)?;
+        let (mut handle, serial) = Self::handle_from_serial(event_loop.context(), serial)?;
         let handle = std::sync::Arc::new(handle);
         Ok(Device {
             handle,
             runtime_error: std::sync::Arc::new(std::sync::Mutex::new(None)),
-            serial: "".to_owned(),
+            serial,
         })
     }
 

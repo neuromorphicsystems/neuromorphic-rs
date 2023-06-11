@@ -2,6 +2,11 @@ use crate::error;
 use crate::usb;
 use rusb::UsbContext;
 
+pub struct ListedDevice {
+    pub speed: usb::Speed,
+    pub serial: Result<String, usb::Error>,
+}
+
 pub trait Usb: Sized {
     type Adapter;
     type Configuration;
@@ -16,6 +21,8 @@ pub trait Usb: Sized {
 
     const DEFAULT_USB_CONFIGURATION: usb::Configuration;
 
+    // read_serial must claim bulk transfer interface(s)
+    // this is required even if read_serial does not use bulk transfers
     fn read_serial(handle: &mut rusb::DeviceHandle<rusb::Context>) -> rusb::Result<String>;
 
     fn update_configuration(&self, configuration: Self::Configuration);
@@ -38,9 +45,7 @@ pub trait Usb: Sized {
 
     fn adapter(&self) -> Self::Adapter;
 
-    fn list_serials_and_speeds(
-        devices: &rusb::DeviceList<rusb::Context>,
-    ) -> rusb::Result<Vec<(String, usb::Speed)>> {
+    fn list_devices(devices: &rusb::DeviceList<rusb::Context>) -> rusb::Result<Vec<ListedDevice>> {
         let mut result = Vec::new();
         for device in devices
             .iter()
@@ -52,10 +57,10 @@ pub trait Usb: Sized {
                 Err(_) => false,
             })
         {
-            result.push((
-                Self::read_serial(&mut device.open()?)?,
-                device.speed().into(),
-            ));
+            result.push(ListedDevice {
+                speed: device.speed().into(),
+                serial: Self::read_serial(&mut device.open()?).map_err(|error| error.into()),
+            });
         }
         Ok(result)
     }
@@ -63,9 +68,9 @@ pub trait Usb: Sized {
     fn handle_from_serial(
         context: &rusb::Context,
         serial: &Option<&str>,
-    ) -> Result<rusb::DeviceHandle<rusb::Context>, usb::Error> {
+    ) -> Result<(rusb::DeviceHandle<rusb::Context>, String), usb::Error> {
         match context.devices()?.iter().find_map(
-            |device| -> Option<rusb::Result<rusb::DeviceHandle<rusb::Context>>> {
+            |device| -> Option<rusb::Result<(rusb::DeviceHandle<rusb::Context>, String)>> {
                 match device.device_descriptor() {
                     Ok(descriptor) => {
                         if descriptor.vendor_id() == Self::VENDOR_ID
@@ -77,17 +82,27 @@ pub trait Usb: Sized {
                             };
                             match serial {
                                 Some(serial) => {
-                                    let device_serial = match Self::read_serial(&mut handle) {
+                                    let device_serial = match Self::read_serial(&mut handle)
+                                    {
                                         Ok(serial) => serial,
-                                        Err(error) => return Some(Err(error)),
+                                        Err(_) => return None, // ignore errors to support devices that are already open
                                     };
                                     if *serial == device_serial {
-                                        Some(Ok(handle))
+                                        let _ = handle.set_auto_detach_kernel_driver(true);
+                                        Some(Ok((handle, device_serial)))
                                     } else {
                                         None
                                     }
                                 }
-                                None => Some(Ok(handle)),
+                                None => {
+                                    let device_serial = match Self::read_serial(&mut handle)
+                                    {
+                                        Ok(serial) => serial,
+                                        Err(_) => return None, // ignore errors to support devices that are already open
+                                    };
+                                    let _ = handle.set_auto_detach_kernel_driver(true);
+                                    Some(Ok((handle, device_serial)))
+                                }
                             }
                         } else {
                             None

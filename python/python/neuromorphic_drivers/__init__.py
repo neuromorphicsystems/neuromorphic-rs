@@ -1,5 +1,6 @@
 import dataclasses
 import sys
+import typing
 
 from . import serde as serde
 from .generated.devices_types import *
@@ -9,25 +10,34 @@ from .neuromorphic_drivers import list_devices as extension_list_devices
 @dataclasses.dataclass
 class ListedDevice:
     name: Name
-    serial: str
     speed: Speed
+    serial: typing.Optional[str]
+    error: typing.Optional[str]
 
 
 def list_devices() -> list[ListedDevice]:
     return [
         ListedDevice(
             name=Name(name),
-            serial=serial,
             speed=Speed(speed),
+            serial=serial,
+            error=error,
         )
-        for (name, serial, speed) in extension_list_devices()
+        for (name, speed, serial, error) in extension_list_devices()
     ]
 
 
 def print_device_list(color: bool = True):
-    table = [["Name", "Serial", "Speed"]]
+    table = [["Name", "Speed", "Serial", "Error"]]
     for device in list_devices():
-        table.append([device.name.value, device.serial, device.speed.value])
+        table.append(
+            [
+                device.name.value,
+                device.speed.value,
+                "-" if device.serial is None else device.serial,
+                "-" if device.error is None else device.error,
+            ]
+        )
     widths = [
         max(len(row[column]) for row in table) for column in range(0, len(table[0]))
     ]

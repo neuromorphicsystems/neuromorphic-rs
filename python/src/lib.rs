@@ -5,15 +5,20 @@ use adapters::Adapter;
 use pyo3::IntoPy;
 
 #[pyo3::pyfunction]
-fn list_devices() -> pyo3::PyResult<Vec<(String, String, String)>> {
+fn list_devices() -> pyo3::PyResult<Vec<(String, String, Option<String>, Option<String>)>> {
     Ok(neuromorphic_drivers_rs::list_devices()
         .map_err(|error| pyo3::exceptions::PyRuntimeError::new_err(format!("{error}")))?
         .into_iter()
         .map(|listed_device| {
+            let (serial, error) = match listed_device.serial {
+                Ok(serial) => (Some(serial), None),
+                Err(error) => (None, Some(format!("{error}"))),
+            };
             (
                 listed_device.device_type.name().to_owned(),
-                listed_device.serial,
                 listed_device.speed.to_string(),
+                serial,
+                error,
             )
         })
         .collect())

@@ -110,7 +110,6 @@ impl device::Usb for Device {
         )?;
         let mut buffer = vec![0u8; 16];
         handle.read_bulk(0x82, &mut buffer, std::time::Duration::from_secs(1))?;
-        handle.release_interface(0)?;
         Ok(format!(
             "{:02X}{:02X}{:02X}{:02X}",
             buffer[11], buffer[10], buffer[9], buffer[8]
@@ -131,12 +130,7 @@ impl device::Usb for Device {
     where
         IntoError: From<Self::Error> + Clone + Send + 'static,
     {
-        let mut handle = Self::handle_from_serial(event_loop.context(), serial)?;
-        let serial = serial.map_or_else(
-            || Self::read_serial(&mut handle),
-            |serial| Ok(serial.to_owned()),
-        )?;
-        handle.claim_interface(0)?;
+        let (mut handle, serial) = Self::handle_from_serial(event_loop.context(), serial)?;
         usb::assert_control_transfer(
             &handle,
             0x80,
