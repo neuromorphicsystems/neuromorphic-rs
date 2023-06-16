@@ -15,3 +15,4 @@ pub use crate::devices::Error;
 pub use crate::devices::Properties;
 pub use crate::devices::Type;
 pub use crate::usb::Configuration as UsbConfiguration;
+pub use neuromorphic_types as types;

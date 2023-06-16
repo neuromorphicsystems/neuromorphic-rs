@@ -203,7 +203,7 @@ const DVS_EVENTS_DTYPE: Dtype<4> = Dtype([
     DtypeField::new("on", DtypeBase::Bool),
 ]);
 
-impl SetCell for neuromorphic_types::DvsEvent<u64, u16, u16> {
+impl SetCell for neuromorphic_drivers::types::DvsEvent<u64, u16, u16> {
     #[inline]
     fn set_cell(self, cell: *mut u8) {
         unsafe {
@@ -218,7 +218,7 @@ impl SetCell for neuromorphic_types::DvsEvent<u64, u16, u16> {
 pub fn dvs_events(
     python: pyo3::Python,
     length: numpy::npyffi::npy_intp,
-) -> StructuredArray<neuromorphic_types::DvsEvent<u64, u16, u16>> {
+) -> StructuredArray<neuromorphic_drivers::types::DvsEvent<u64, u16, u16>> {
     StructuredArray::new(python, DVS_EVENTS_DTYPE, length)
 }
 
@@ -228,7 +228,7 @@ const TRIGGER_EVENTS_DTYPE: Dtype<3> = Dtype([
     DtypeField::new("rising", DtypeBase::Bool),
 ]);
 
-impl SetCell for neuromorphic_types::TriggerEvent<u64, u8> {
+impl SetCell for neuromorphic_drivers::types::TriggerEvent<u64, u8> {
     #[inline]
     fn set_cell(self, cell: *mut u8) {
         unsafe {
@@ -243,6 +243,6 @@ impl SetCell for neuromorphic_types::TriggerEvent<u64, u8> {
 pub fn trigger_events(
     python: pyo3::Python,
     length: numpy::npyffi::npy_intp,
-) -> StructuredArray<neuromorphic_types::TriggerEvent<u64, u8>> {
+) -> StructuredArray<neuromorphic_drivers::types::TriggerEvent<u64, u8>> {
     StructuredArray::new(python, TRIGGER_EVENTS_DTYPE, length)
 }

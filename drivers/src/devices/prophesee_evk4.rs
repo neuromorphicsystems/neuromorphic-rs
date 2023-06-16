@@ -27,6 +27,8 @@ pub struct Configuration {
     pub biases: Biases,
     pub x_mask: [u64; 20],
     pub y_mask: [u64; 12],
+    pub invert_mask: bool,
+    pub enable_external_trigger: bool,
 }
 
 pub struct Device {
@@ -70,7 +72,7 @@ impl device::Usb for Device {
 
     const PRODUCT_ID: u16 = 0x00f5;
 
-    const PROPERTIES: Self::Properties = properties::Camera::<Self::Configuration> {
+    const PROPERTIES: Self::Properties = Self::Properties {
         name: "Prophesee EVK4",
         width: 1280,
         height: 720,
@@ -92,6 +94,8 @@ impl device::Usb for Device {
             },
             x_mask: [0; 20],
             y_mask: [0; 12],
+            invert_mask: false,
+            enable_external_trigger: true,
         },
     };
 
@@ -99,6 +103,7 @@ impl device::Usb for Device {
         buffer_size: 1 << 17,
         ring_size: 1 << 12,
         transfer_queue_size: 1 << 5,
+        allow_dma: false,
     };
 
     fn read_serial(handle: &mut rusb::DeviceHandle<rusb::Context>) -> rusb::Result<String> {
@@ -130,7 +135,7 @@ impl device::Usb for Device {
     where
         IntoError: From<Self::Error> + Clone + Send + 'static,
     {
-        let (mut handle, serial) = Self::handle_from_serial(event_loop.context(), serial)?;
+        let (handle, serial) = Self::handle_from_serial(event_loop.context(), serial)?;
         usb::assert_control_transfer(
             &handle,
             0x80,
@@ -220,7 +225,17 @@ impl device::Usb for Device {
         let _ = Reserved0014::default().read(&handle)?; // ?
 
         // issd_evk3_imx636_stop in hal_psee_plugins/include/devices/imx636/imx636_evk3_issd.h {
-        RoiCtrl { value: 0xf0005042 }.write(&handle)?;
+        RoiCtrl {
+            reserved_0_1: 0,
+            td_enable: 1,
+            reserved_2_5: 0,
+            td_shadow_trigger: 0,
+            td_roni_n_en: 1,
+            reserved_7_10: 0,
+            td_rstn: 0,
+            reserved_11_32: 0x1e000a,
+        }
+        .write(&handle)?;
         Unknown002C { value: 0x0022c324 }.write(&handle)?;
         RoCtrl { value: 0x00000002 }.write(&handle)?;
         std::thread::sleep(std::time::Duration::from_millis(1));
@@ -336,7 +351,17 @@ impl device::Usb for Device {
         EdfPipelineControl { value: 0x00070001 }.write(&handle)?;
         Unknown8000 { value: 0x0001e085 }.write(&handle)?;
         TimeBaseCtrl { value: 0x00000644 }.write(&handle)?;
-        RoiCtrl { value: 0xf0005042 }.write(&handle)?;
+        RoiCtrl {
+            reserved_0_1: 0,
+            td_enable: 1,
+            reserved_2_5: 0,
+            td_shadow_trigger: 0,
+            td_roni_n_en: 1,
+            reserved_7_10: 0,
+            td_rstn: 0,
+            reserved_11_32: 0x1e000a,
+        }
+        .write(&handle)?;
         Spare0 { value: 0x00000200 }.write(&handle)?;
         BiasDiff {
             idac_ctl: 0x4d,
@@ -421,43 +446,17 @@ impl device::Usb for Device {
         let _ = TDroppingControl::default().read(&handle)?;
         TDroppingControl { value: 0x00000000 }.write(&handle)?;
         TdTargetEventRate { value: 0x00000fa0 }.write(&handle)?;
-
-        // td_roi_x
-        for offset in 0..((configuration.x_mask.len() as u32) * 2) {
-            let register = TdRoiX {
-                value: if (offset % 2) == 0 {
-                    (configuration.x_mask[(offset / 2) as usize] & 0xffffffffu64) as u32
-                } else {
-                    ((configuration.x_mask[(offset / 2) as usize] & 0xffffffff00000000u64) >> 32)
-                        as u32
-                },
-            }
-            .offset(offset);
-            let _ = register.read(&handle)?;
-            register.write(&handle)?;
-        }
-
-        for offset in 0..((configuration.y_mask.len() as u32) * 2 - 1) {
-            let register = TdRoiY {
-                value: if (offset % 2) == 0 {
-                    (configuration.x_mask[(offset / 2) as usize] & 0xffffffffu64) as u32
-                        | if offset == (configuration.y_mask.len() as u32) * 2 - 2 {
-                            0x00ff0000
-                        } else {
-                            0x00000000
-                        }
-                } else {
-                    ((configuration.x_mask[(offset / 2) as usize] & 0xffffffff00000000u64) >> 32)
-                        as u32
-                },
-            }
-            .offset(offset);
-            let _ = register.read(&handle)?;
-            register.write(&handle)?;
-        }
-
         let _ = EdfReserved7004::default().read(&handle)?;
-        EdfReserved7004 { value: 0x0000c1ff }.write(&handle)?;
+        EdfReserved7004 {
+            reserved_0_10: 0b0111111111,
+            external_trigger: if configuration.enable_external_trigger {
+                1
+            } else {
+                0
+            },
+            reserved_11_32: 0b11000,
+        }
+        .write(&handle)?;
         loop {
             let mut buffer = vec![0u8; Self::DEFAULT_USB_CONFIGURATION.buffer_size];
             match handle.read_bulk(0x81, &mut buffer, TIMEOUT) {
@@ -477,7 +476,7 @@ impl device::Usb for Device {
             &[0x72, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
             TIMEOUT,
         )?;
-        //send_parameters(camera_parameters, true);
+        update_configuration(&handle, None, &configuration)?;
         let _ = ReferencePeriod::default().read(&handle)?;
         let _ = TdTargetEventRate::default().read(&handle)?;
         let _ = ErcReserved6000::default().read(&handle)?;
@@ -490,7 +489,17 @@ impl device::Usb for Device {
         let _ = TimeBaseCtrl::default().read(&handle)?;
         TimeBaseCtrl { value: 0x00000645 }.write(&handle)?;
         Unknown002C { value: 0x0022c724 }.write(&handle)?;
-        RoiCtrl { value: 0xf0005442 }.write(&handle)?;
+        RoiCtrl {
+            reserved_0_1: 0,
+            td_enable: 1,
+            reserved_2_5: 0,
+            td_shadow_trigger: 0,
+            td_roni_n_en: (!configuration.invert_mask) as u32,
+            reserved_7_10: 0,
+            td_rstn: 1,
+            reserved_11_32: 0x1e000a,
+        }
+        .write(&handle)?;
         // }
 
         let handle = std::sync::Arc::new(handle);
@@ -547,7 +556,17 @@ impl device::Usb for Device {
 impl Drop for Device {
     fn drop(&mut self) {
         // issd_evk3_imx636_stop in hal_psee_plugins/include/devices/imx636/imx636_evk3_issd.h {
-        let _ = RoiCtrl { value: 0xf0005042 }.write(&self.handle);
+        let _ = RoiCtrl {
+            reserved_0_1: 0,
+            td_enable: 1,
+            reserved_2_5: 0,
+            td_shadow_trigger: 0,
+            td_roni_n_en: 1,
+            reserved_7_10: 0,
+            td_rstn: 0,
+            reserved_11_32: 0x1e000a,
+        }
+        .write(&self.handle);
         let _ = Unknown002C { value: 0x0022c324 }.write(&self.handle);
         let _ = RoCtrl { value: 0x00000002 }.write(&self.handle);
         let _ = std::thread::sleep(std::time::Duration::from_millis(1));
@@ -615,7 +634,7 @@ macro_rules! update_bias {
             Some(previous_biases) => previous_biases.$name != $biases.$name,
             None => true,
         } {
-            BiasPr {
+            $register {
                 idac_ctl: $biases.$name as u32,
                 vdac_ctl: 0,
                 buf_stg: 1,
@@ -712,12 +731,69 @@ fn update_configuration(
         Some(previous_configuration) => {
             previous_configuration.x_mask != configuration.x_mask
                 || previous_configuration.y_mask != configuration.y_mask
+                || previous_configuration.invert_mask != configuration.invert_mask
         }
         None => true,
     } {
-        // @DEV send new masks and possibly a few flush / enable commands
-        // (*register_map_)[sensor_prefix_ + "roi_ctrl"].write_value(
-        //{{"roi_td_en", 1}, {"px_td_rstn", 1}, {"roi_td_shadow_trigger", 1}});
+        for offset in 0..((configuration.x_mask.len() as u32) * 2) {
+            let register = TdRoiX {
+                value: if (offset % 2) == 0 {
+                    (configuration.x_mask[(offset / 2) as usize] & 0xffffffffu64) as u32
+                } else {
+                    ((configuration.x_mask[(offset / 2) as usize] & 0xffffffff00000000u64) >> 32)
+                        as u32
+                },
+            }
+            .offset(offset);
+            let _ = register.read(&handle)?;
+            register.write(&handle)?;
+        }
+        for offset in 0..((configuration.y_mask.len() as u32) * 2 - 1) {
+            let register = TdRoiY {
+                value: if (offset % 2) == 0 {
+                    let [byte2, byte3, _, _, _, _, _, _] = configuration.y_mask
+                        [configuration.y_mask.len() - 1 - (offset / 2) as usize]
+                        .to_le_bytes();
+                    if offset < (configuration.y_mask.len() as u32) * 2 - 2 {
+                        let [_, _, _, _, _, _, byte0, byte1] = configuration.y_mask
+                            [configuration.y_mask.len() - 2 - (offset / 2) as usize]
+                            .to_le_bytes();
+                        u32::from_le_bytes([
+                            byte3.reverse_bits(),
+                            byte2.reverse_bits(),
+                            byte1.reverse_bits(),
+                            byte0.reverse_bits(),
+                        ])
+                    } else {
+                        u32::from_le_bytes([byte3, byte2, 0xff, 0x00])
+                    }
+                } else {
+                    let [_, _, byte0, byte1, byte2, byte3, _, _] = configuration.y_mask
+                        [configuration.y_mask.len() - 2 - (offset / 2) as usize]
+                        .to_le_bytes();
+                    u32::from_le_bytes([
+                        byte3.reverse_bits(),
+                        byte2.reverse_bits(),
+                        byte1.reverse_bits(),
+                        byte0.reverse_bits(),
+                    ])
+                },
+            }
+            .offset(offset);
+            let _ = register.read(&handle)?;
+            register.write(&handle)?;
+        }
+        RoiCtrl {
+            reserved_0_1: 0,
+            td_enable: 1,
+            reserved_2_5: 0,
+            td_shadow_trigger: 1,
+            td_roni_n_en: configuration.invert_mask as u32,
+            reserved_7_10: 0,
+            td_rstn: previous_configuration.is_some() as u32,
+            reserved_11_32: 0x1e000a,
+        }
+        .write(&handle)?;
     }
     Ok(())
 }
@@ -857,7 +933,16 @@ macro_rules! register {
 }
 
 register! { Unknown0000, 0x0000, { value: 0..32 } }
-register! { RoiCtrl, 0x0004, { value: 0..32 } }
+register! { RoiCtrl, 0x0004, {
+    reserved_0_1: 0..1,
+    td_enable: 1..2,
+    reserved_2_5: 2..5,
+    td_shadow_trigger: 5..6,
+    td_roni_n_en: 6..7,
+    reserved_7_10: 7..10,
+    td_rstn: 10..11,
+    reserved_11_32: 11..32,
+} }
 register! { LifoCtrl, 0x000C, { value: 0..32 } }
 register! { LifoStatus, 0x0010, { value: 0..32 } }
 register! { Reserved0014, 0x0014, { value: 0..32 } }
@@ -1068,7 +1153,11 @@ register! { VDroppingControl, 0x6070, { value: 0..32 } }
 register! { TDropLut, 0x6400, { value: 0..32 } }
 register! { ErcReserved6800, 0x6800, { value: 0..32 } }
 register! { EdfPipelineControl, 0x7000, { value: 0..32 } }
-register! { EdfReserved7004, 0x7004, { value: 0..32 } }
+register! { EdfReserved7004, 0x7004, {
+    reserved_0_10: 0..10,
+    external_trigger: 10..11,
+    reserved_11_32: 11..32,
+} }
 register! { Unknown7008, 0x7008, { value: 0..32 } }
 register! { Unknown8000, 0x8000, { value: 0..32 } }
 register! { ReadoutCtrl, 0x9000, { value: 0..32 } }

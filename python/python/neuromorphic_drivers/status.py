@@ -10,7 +10,9 @@ class PacketStatus:
     ring_length: int
 
     def backlog(self):
-        return (self.write_range[0] + self.ring_length - 1 - self.read) % self.ring_length
+        return (
+            self.write_range[0] + self.ring_length - 1 - self.read
+        ) % self.ring_length
 
 
 @dataclasses.dataclass

@@ -37,7 +37,7 @@ impl device::Usb for Device {
 
     const PRODUCT_ID: u16 = 0x00f4;
 
-    const PROPERTIES: Self::Properties = properties::Camera::<Self::Configuration> {
+    const PROPERTIES: Self::Properties = Self::Properties {
         name: "Prophesee EVK3 HD",
         width: 1280,
         height: 720,
@@ -48,6 +48,7 @@ impl device::Usb for Device {
         buffer_size: 1 << 17,
         ring_size: 1 << 12,
         transfer_queue_size: 1 << 5,
+        allow_dma: false,
     };
 
     fn read_serial(handle: &mut rusb::DeviceHandle<rusb::Context>) -> rusb::Result<String> {

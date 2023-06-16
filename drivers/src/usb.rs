@@ -6,6 +6,7 @@ pub struct Configuration {
     pub buffer_size: usize,
     pub ring_size: usize,
     pub transfer_queue_size: usize,
+    pub allow_dma: bool,
 }
 
 #[derive(thiserror::Error, Debug, Clone)]
@@ -271,13 +272,13 @@ extern "system" fn usb_transfer_callback(transfer_pointer: *mut libusb1_sys::lib
                             let active_buffer = shared.write_range.0;
                             shared.buffers[active_buffer].system_time = now;
                             shared.buffers[active_buffer].length = transfer.actual_length as usize;
+                            transfer.buffer = shared.buffers[shared.write_range.1].data.as_ptr();
+                            transfer.length = shared.buffers[shared.write_range.1].capacity as i32;
+                            resubmit = true;
                             shared.write_range.0 =
                                 (shared.write_range.0 + 1) % shared.buffers.len();
                             shared.write_range.1 =
                                 (shared.write_range.1 + 1) % shared.buffers.len();
-                            transfer.buffer = shared.buffers[shared.write_range.1].data.as_ptr();
-                            transfer.length = shared.buffers[shared.write_range.1].capacity as i32;
-                            resubmit = true;
                             context.ring.shared_condvar.notify_one();
                         }
                     }
@@ -416,10 +417,17 @@ impl Ring {
         let mut buffers = Vec::new();
         buffers.reserve_exact(configuration.ring_size);
         for _ in 0..configuration.ring_size {
-            // unsafe: libusb wrapper
-            let dma_buffer = unsafe {
-                libusb_dev_mem_alloc(handle.as_raw(), configuration.buffer_size as libc::ssize_t)
-            } as *mut u8;
+            let dma_buffer = if configuration.allow_dma {
+                // unsafe: libusb wrapper
+                (unsafe {
+                    libusb_dev_mem_alloc(
+                        handle.as_raw(),
+                        configuration.buffer_size as libc::ssize_t,
+                    )
+                } as *mut u8)
+            } else {
+                std::ptr::null_mut()
+            };
             if dma_buffer.is_null() {
                 buffers.push(Buffer {
                     system_time: std::time::SystemTime::now(),
@@ -441,7 +449,7 @@ impl Ring {
                     ),
                     length: 0,
                     capacity: configuration.buffer_size,
-                    dma: true,
+                    dma: false,
                 });
             } else {
                 buffers.push(Buffer {
@@ -650,6 +658,12 @@ impl BufferView<'_> {
     pub fn backlog(&self) -> usize {
         (self.write_range.0 + self.ring_length - 1 - self.read) % self.ring_length
     }
+
+    pub fn delay(&self) -> std::time::Duration {
+        std::time::SystemTime::now()
+            .duration_since(self.system_time)
+            .unwrap_or_else(|_| std::time::Duration::default())
+    }
 }
 
 impl Ring {
@@ -709,16 +723,14 @@ impl Drop for Ring {
     fn drop(&mut self) {
         let mut dealloc_buffers = true;
         let before_dealloc_transfers = std::time::Instant::now();
+        #[cfg(target_os = "macos")]
         {
             // unwrap: mutex is not poisonned
             let mut shared = self.context.shared.lock().unwrap();
             // unsafe: transfer is allocated
             let _ = unsafe { libusb1_sys::libusb_cancel_transfer(self.transfers[0].as_ptr()) };
-            #[cfg(target_os = "macos")]
-            {
-                for index in 0..self.transfers.len() {
-                    shared.transfer_statuses[index] = TransferStatus::Cancelling;
-                }
+            for index in 0..self.transfers.len() {
+                shared.transfer_statuses[index] = TransferStatus::Cancelling;
             }
         }
         loop {
@@ -729,10 +741,10 @@ impl Drop for Ring {
                 for index in 0..self.transfers.len() {
                     match shared.transfer_statuses[index] {
                         TransferStatus::Active => {
-                            if unsafe {
+                            let status = unsafe {
                                 libusb1_sys::libusb_cancel_transfer(self.transfers[index].as_ptr())
-                            } == 0
-                            {
+                            };
+                            if status == 0 {
                                 shared.transfer_statuses[index] = TransferStatus::Cancelling;
                             } else {
                                 shared.transfer_statuses[index] = TransferStatus::Complete;

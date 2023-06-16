@@ -1,6 +1,6 @@
+from . import status
 from .generated import enums, unions
 from .neuromorphic_drivers import Device as ExtensionDevice
-from . import status
 
 
 class Device(ExtensionDevice):

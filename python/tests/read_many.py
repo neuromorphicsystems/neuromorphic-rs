@@ -1,6 +1,5 @@
-import numpy
-
 import neuromorphic_drivers as nd
+import numpy
 
 nd.print_device_list()
 
