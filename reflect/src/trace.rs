@@ -45,8 +45,13 @@ impl Samples {
     }
 
     /// Obtain a (serialized) sample.
-    pub fn value(&self, name: &'static str) -> Option<&Value> {
+    pub fn value(&self, name: &str) -> Option<&Value> {
         self.values.get(name)
+    }
+
+    /// Clear stored samples.
+    pub fn clear(&mut self) {
+        self.values.clear();
     }
 }
 
@@ -106,6 +111,26 @@ impl Tracer {
             registry: BTreeMap::new(),
             incomplete_enums: BTreeSet::new(),
         }
+    }
+
+    /// Trace the serialization of a particular value,
+    /// followed by the deserialization of its type to find enum variants.
+    pub fn recursive_trace<'de, T>(
+        &mut self,
+        samples: &mut Samples,
+        value: &T,
+    ) -> Result<(Format, Value)>
+    where
+        T: ?Sized + Serialize + Deserialize<'de>,
+    {
+        let (format, value) = self.trace_value(samples, value)?;
+        static SAMPLES: Lazy<Samples> = Lazy::new(Samples::new);
+        let _ = self.trace_type::<T>(&SAMPLES)?;
+        while !self.incomplete_enums.is_empty() {
+            self.incomplete_enums.clear();
+            let _ = self.trace_type::<T>(&SAMPLES)?;
+        }
+        Ok((format, value))
     }
 
     /// Trace the serialization of a particular value.

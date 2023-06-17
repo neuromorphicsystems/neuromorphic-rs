@@ -20,10 +20,13 @@ class Device(ExtensionDevice):
         return self
 
     def __next__(self):
-        (system_time, packet_status), packet = super().__next__()
+        system_time, packet_status, packet = super().__next__()
         return (
             status.Status(
-                system_time=system_time, packet=status.PacketStatus(*packet_status)
+                system_time=system_time,
+                packet=None
+                if packet_status is None
+                else status.PacketStatus(*packet_status),
             ),
             packet,
         )

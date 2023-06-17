@@ -1,5 +1,5 @@
 [workspace]
-members = ["drivers", "python", "types"]
+members = ["drivers", "python", "reflect", "types"]
 
 [profile.release]
 lto = "fat"

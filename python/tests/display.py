@@ -136,23 +136,14 @@ class Canvas(vispy.app.Canvas):
 if __name__ == "__main__":
     neuromorphic_drivers.print_device_list()
     camera_thread: typing.Optional[threading.Thread] = None
-    mask = neuromorphic_drivers.Mask(
-        width=neuromorphic_drivers.prophesee_evk4.Properties().width,
-        height=neuromorphic_drivers.prophesee_evk4.Properties().height,
-        fill=True,
-    )
-    mask.clear_rectangle(x=200, y=200, width=300, height=300)
-    mask.write_pixels_to_png_file("mask.png")
     with neuromorphic_drivers.open(
         configuration=neuromorphic_drivers.prophesee_evk4.Configuration(
             biases=neuromorphic_drivers.prophesee_evk4.Biases(
                 diff_on=120,
                 diff_off=120,
             ),
-            x_mask=mask.x(),
-            y_mask=mask.y(),
-            invert_mask=False,
-        )
+        ),
+        iterator_timeout=0.016,
     ) as device:
         print(device.serial(), device.properties())
         canvas = Canvas(
@@ -168,7 +159,7 @@ if __name__ == "__main__":
                 if packet is not None:
                     if "dvs_events" in packet:
                         canvas.push(packet["dvs_events"])
-                    if status.packet.backlog() > 1000:
+                    if status.packet is not None and status.packet.backlog() > 1000:
                         device.clear_backlog(until=0)
 
         camera_thread = threading.Thread(target=camera_worker)

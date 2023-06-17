@@ -23,12 +23,20 @@ pub struct Biases {
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub enum Clock {
+    Internal = 0,
+    InternalWithOutputEnabled = 1,
+    External = 2,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 pub struct Configuration {
     pub biases: Biases,
     pub x_mask: [u64; 20],
     pub y_mask: [u64; 12],
     pub invert_mask: bool,
     pub enable_external_trigger: bool,
+    pub clock: Clock,
 }
 
 pub struct Device {
@@ -96,6 +104,7 @@ impl device::Usb for Device {
             y_mask: [0; 12],
             invert_mask: false,
             enable_external_trigger: true,
+            clock: Clock::Internal,
         },
     };
 
@@ -136,6 +145,7 @@ impl device::Usb for Device {
         IntoError: From<Self::Error> + Clone + Send + 'static,
     {
         let (handle, serial) = Self::handle_from_serial(event_loop.context(), serial)?;
+        println!("serial={}, clock={:?}", serial, configuration.clock); // @DEV
         usb::assert_control_transfer(
             &handle,
             0x80,
@@ -240,7 +250,14 @@ impl device::Usb for Device {
         RoCtrl { value: 0x00000002 }.write(&handle)?;
         std::thread::sleep(std::time::Duration::from_millis(1));
         let _ = TimeBaseCtrl::default().read(&handle)?;
-        TimeBaseCtrl { value: 0x00000644 }.write(&handle)?;
+        TimeBaseCtrl {
+            enable: 0,
+            external: 0,
+            primary: 1,
+            external_enable: 0,
+            reserved_4_32: 0x64,
+        }
+        .write(&handle)?;
         MipiControl { value: 0x000002f8 }.write(&handle)?;
         std::thread::sleep(std::time::Duration::from_micros(300));
         // }
@@ -350,7 +367,14 @@ impl device::Usb for Device {
         Unknown7008 { value: 0x00000001 }.write(&handle)?;
         EdfPipelineControl { value: 0x00070001 }.write(&handle)?;
         Unknown8000 { value: 0x0001e085 }.write(&handle)?;
-        TimeBaseCtrl { value: 0x00000644 }.write(&handle)?;
+        TimeBaseCtrl {
+            enable: 0,
+            external: 0,
+            primary: 1,
+            external_enable: 0,
+            reserved_4_32: 0x64,
+        }
+        .write(&handle)?;
         RoiCtrl {
             reserved_0_1: 0,
             td_enable: 1,
@@ -487,7 +511,42 @@ impl device::Usb for Device {
         MipiControl { value: 0x000002f9 }.write(&handle)?;
         RoCtrl { value: 0x00000000 }.write(&handle)?;
         let _ = TimeBaseCtrl::default().read(&handle)?;
-        TimeBaseCtrl { value: 0x00000645 }.write(&handle)?;
+        TimeBaseCtrl {
+            enable: 1,
+            external: match configuration.clock {
+                Clock::Internal => 0,
+                _ => 1,
+            },
+            primary: match configuration.clock {
+                Clock::External => 0,
+                _ => 1,
+            },
+            external_enable: match configuration.clock {
+                Clock::Internal => 0,
+                _ => 1,
+            },
+            reserved_4_32: 0x64,
+        }
+        .write(&handle)?;
+        match configuration.clock {
+            Clock::Internal => (),
+            Clock::InternalWithOutputEnabled => {
+                DigPad2Ctrl {
+                    reserved_0_16: 0xFCCF,
+                    sync: 0b1100,
+                    reserved_20_32: 0xCCF,
+                }
+                .write(&handle)?;
+            }
+            Clock::External => {
+                DigPad2Ctrl {
+                    reserved_0_16: 0xFCCF,
+                    sync: 0b1111,
+                    reserved_20_32: 0xCCF,
+                }
+                .write(&handle)?;
+            }
+        }
         Unknown002C { value: 0x0022c724 }.write(&handle)?;
         RoiCtrl {
             reserved_0_1: 0,
@@ -571,7 +630,14 @@ impl Drop for Device {
         let _ = RoCtrl { value: 0x00000002 }.write(&self.handle);
         let _ = std::thread::sleep(std::time::Duration::from_millis(1));
         let _ = TimeBaseCtrl::default().read(&self.handle);
-        let _ = TimeBaseCtrl { value: 0x00000644 }.write(&self.handle);
+        let _ = TimeBaseCtrl {
+            enable: 0,
+            external: 0,
+            primary: 1,
+            external_enable: 0,
+            reserved_4_32: 0x64,
+        }
+        .write(&self.handle);
         let _ = MipiControl { value: 0x000002f8 }.write(&self.handle);
         std::thread::sleep(std::time::Duration::from_micros(300));
         // }
@@ -953,7 +1019,11 @@ register! { Unknown002C, 0x002C, { value: 0..32 } }
 register! { RoiWinCtrl, 0x0034, { value: 0..32 } }
 register! { RoiWinStartAddr, 0x0038, { value: 0..32 } }
 register! { RoiWinEndAddr, 0x003C, { value: 0..32 } }
-register! { DigPad2Ctrl, 0x0044, { value: 0..32 } }
+register! { DigPad2Ctrl, 0x0044, {
+    reserved_0_16: 0..16,
+    sync: 16..20,
+    reserved_20_32: 20..32,
+} }
 register! { AdcControl, 0x004C, { value: 0..32 } }
 register! { AdcStatus, 0x0050, { value: 0..32 } }
 register! { AdcMiscCtrl, 0x0054, { value: 0..32 } }
@@ -1162,7 +1232,13 @@ register! { Unknown7008, 0x7008, { value: 0..32 } }
 register! { Unknown8000, 0x8000, { value: 0..32 } }
 register! { ReadoutCtrl, 0x9000, { value: 0..32 } }
 register! { RoFsmCtrl, 0x9004, { value: 0..32 } }
-register! { TimeBaseCtrl, 0x9008, { value: 0..32 } }
+register! { TimeBaseCtrl, 0x9008, {
+    enable: 0..1,
+    external: 1..2,
+    primary: 2..3,
+    external_enable: 3..4,
+    reserved_4_32: 4..32,
+} }
 register! { DigCtrl, 0x900C, { value: 0..32 } }
 register! { DigStartPos, 0x9010, { value: 0..32 } }
 register! { DigEndPos, 0x9014, { value: 0..32 } }

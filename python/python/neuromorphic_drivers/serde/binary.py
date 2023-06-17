@@ -1,6 +1,8 @@
 import builtins
 import collections.abc
 import dataclasses
+import enum
+import inspect
 import io
 import typing
 
@@ -159,19 +161,11 @@ class Serializer:
             else:
                 raise type.SerializationError("Unexpected type", obj_type)
 
+        elif inspect.isclass(obj_type) and issubclass(obj_type, enum.Enum):
+            if not isinstance(obj, obj_type):
+                raise type.SerializationError("Wrong Value for the type", obj, obj_type)
+            self.serialize_variant_index(obj.value)
         else:
-            if not dataclasses.is_dataclass(obj_type):  # Enum
-                if not hasattr(obj_type, "VARIANTS"):
-                    raise type.SerializationError("Unexpected type", obj_type)
-                if not hasattr(obj, "INDEX"):
-                    raise type.SerializationError(
-                        "Wrong Value for the type", obj, obj_type
-                    )
-                self.serialize_variant_index(obj.__class__.INDEX)
-                obj_type = obj_type.VARIANTS[obj.__class__.INDEX]
-                if not dataclasses.is_dataclass(obj_type):
-                    raise type.SerializationError("Unexpected type", obj_type)
-
             if not isinstance(obj, obj_type):
                 raise type.SerializationError("Wrong Value for the type", obj, obj_type)
 

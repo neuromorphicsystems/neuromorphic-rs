@@ -2,60 +2,60 @@ use neuromorphic_drivers::device::Usb;
 use std::io::Write;
 
 fn quote_type(
-    format: &serde_reflection::Format,
+    format: &reflect::Format,
     name_to_new_name: &std::collections::HashMap<String, String>,
 ) -> String {
     match format {
-        serde_reflection::Format::TypeName(name) => {
+        reflect::Format::TypeName(name) => {
             name_to_new_name.get(name).unwrap_or_else(|| &name).clone()
         }
-        serde_reflection::Format::Unit => "serde.type.unit".into(),
-        serde_reflection::Format::Bool => "bool".into(),
-        serde_reflection::Format::I8 => "serde.type.int8".into(),
-        serde_reflection::Format::I16 => "serde.type.int16".into(),
-        serde_reflection::Format::I32 => "serde.type.int32".into(),
-        serde_reflection::Format::I64 => "serde.type.int64".into(),
-        serde_reflection::Format::I128 => "serde.type.int128".into(),
-        serde_reflection::Format::U8 => "serde.type.uint8".into(),
-        serde_reflection::Format::U16 => "serde.type.uint16".into(),
-        serde_reflection::Format::U32 => "serde.type.uint32".into(),
-        serde_reflection::Format::U64 => "serde.type.uint64".into(),
-        serde_reflection::Format::U128 => "serde.type.uint128".into(),
-        serde_reflection::Format::F32 => "serde.type.float32".into(),
-        serde_reflection::Format::F64 => "serde.type.float64".into(),
-        serde_reflection::Format::Char => "serde.type.char".into(),
-        serde_reflection::Format::Str => "str".into(),
-        serde_reflection::Format::Bytes => "bytes".into(),
-        serde_reflection::Format::Option(format) => {
+        reflect::Format::Unit => "serde.type.unit".into(),
+        reflect::Format::Bool => "bool".into(),
+        reflect::Format::I8 => "serde.type.int8".into(),
+        reflect::Format::I16 => "serde.type.int16".into(),
+        reflect::Format::I32 => "serde.type.int32".into(),
+        reflect::Format::I64 => "serde.type.int64".into(),
+        reflect::Format::I128 => "serde.type.int128".into(),
+        reflect::Format::U8 => "serde.type.uint8".into(),
+        reflect::Format::U16 => "serde.type.uint16".into(),
+        reflect::Format::U32 => "serde.type.uint32".into(),
+        reflect::Format::U64 => "serde.type.uint64".into(),
+        reflect::Format::U128 => "serde.type.uint128".into(),
+        reflect::Format::F32 => "serde.type.float32".into(),
+        reflect::Format::F64 => "serde.type.float64".into(),
+        reflect::Format::Char => "serde.type.char".into(),
+        reflect::Format::Str => "str".into(),
+        reflect::Format::Bytes => "bytes".into(),
+        reflect::Format::Option(format) => {
             format!("{} | None", quote_type(format, name_to_new_name))
         }
-        serde_reflection::Format::Seq(format) => {
+        reflect::Format::Seq(format) => {
             format!("list[{}]", quote_type(format, name_to_new_name))
         }
-        serde_reflection::Format::Map { key, value } => {
+        reflect::Format::Map { key, value } => {
             format!(
                 "dict[{}, {}]",
                 quote_type(key, name_to_new_name),
                 quote_type(value, name_to_new_name)
             )
         }
-        serde_reflection::Format::Tuple(formats) => {
+        reflect::Format::Tuple(formats) => {
             if formats.is_empty() {
                 "tuple[()]".into()
             } else {
                 format!("tuple[{}]", quote_types(formats, name_to_new_name))
             }
         }
-        serde_reflection::Format::TupleArray { content, size } => format!(
+        reflect::Format::TupleArray { content, size } => format!(
             "tuple[\n        {}\n    ]",
             quote_types(&vec![content.as_ref().clone(); *size], name_to_new_name)
         ),
-        serde_reflection::Format::Variable(_) => panic!("unexpected value"),
+        reflect::Format::Variable(_) => panic!("unexpected value"),
     }
 }
 
 fn quote_types(
-    formats: &[serde_reflection::Format],
+    formats: &[reflect::Format],
     name_to_new_name: &std::collections::HashMap<String, String>,
 ) -> String {
     format!(
@@ -68,25 +68,25 @@ fn quote_types(
     )
 }
 
-fn value_to_string(value: &serde_reflection::Value) -> String {
+fn value_to_string(value: &reflect::Value) -> String {
     match value {
-        serde_reflection::Value::Unit => "()".to_owned(),
-        serde_reflection::Value::Bool(value) => (if *value { "True" } else { "False" }).to_owned(),
-        serde_reflection::Value::I8(value) => value.to_string(),
-        serde_reflection::Value::I16(value) => value.to_string(),
-        serde_reflection::Value::I32(value) => value.to_string(),
-        serde_reflection::Value::I64(value) => value.to_string(),
-        serde_reflection::Value::I128(value) => value.to_string(),
-        serde_reflection::Value::U8(value) => format!("{:#04X}", value),
-        serde_reflection::Value::U16(value) => value.to_string(),
-        serde_reflection::Value::U32(value) => value.to_string(),
-        serde_reflection::Value::U64(value) => value.to_string(),
-        serde_reflection::Value::U128(value) => value.to_string(),
-        serde_reflection::Value::F32(value) => value.to_string(),
-        serde_reflection::Value::F64(value) => value.to_string(),
-        serde_reflection::Value::Char(value) => value.to_string(),
-        serde_reflection::Value::Str(value) => format!("\"{}\"", value.replace("\"", "\\\"")),
-        serde_reflection::Value::Bytes(value) => format!(
+        reflect::Value::Unit => "()".to_owned(),
+        reflect::Value::Bool(value) => (if *value { "True" } else { "False" }).to_owned(),
+        reflect::Value::I8(value) => value.to_string(),
+        reflect::Value::I16(value) => value.to_string(),
+        reflect::Value::I32(value) => value.to_string(),
+        reflect::Value::I64(value) => value.to_string(),
+        reflect::Value::I128(value) => value.to_string(),
+        reflect::Value::U8(value) => format!("{:#04X}", value),
+        reflect::Value::U16(value) => value.to_string(),
+        reflect::Value::U32(value) => value.to_string(),
+        reflect::Value::U64(value) => value.to_string(),
+        reflect::Value::U128(value) => value.to_string(),
+        reflect::Value::F32(value) => value.to_string(),
+        reflect::Value::F64(value) => value.to_string(),
+        reflect::Value::Char(value) => value.to_string(),
+        reflect::Value::Str(value) => format!("\"{}\"", value.replace("\"", "\\\"")),
+        reflect::Value::Bytes(value) => format!(
             "[{}]",
             value
                 .iter()
@@ -94,11 +94,11 @@ fn value_to_string(value: &serde_reflection::Value) -> String {
                 .collect::<Vec<String>>()
                 .join(", ")
         ),
-        serde_reflection::Value::Option(value) => value
+        reflect::Value::Option(value) => value
             .as_ref()
             .map_or_else(|| "None".to_owned(), |value| value_to_string(&value)),
-        serde_reflection::Value::Variant(_, value) => value_to_string(&value),
-        serde_reflection::Value::Seq(value) => format!(
+        reflect::Value::Variant(_, value) => value_to_string(&value),
+        reflect::Value::Seq(value) => format!(
             "({})",
             value
                 .into_iter()
@@ -109,10 +109,30 @@ fn value_to_string(value: &serde_reflection::Value) -> String {
     }
 }
 
+fn camel_case_to_screaming_case(string: &str) -> String {
+    let mut result = String::new();
+    for (index, character) in string.char_indices() {
+        if index > 0 && character.is_ascii_uppercase() {
+            result.push('_');
+        }
+        result.push(character.to_ascii_uppercase());
+    }
+    result
+}
+
+enum NodeClass {
+    Dataclass {
+        children: std::collections::HashSet<String>,
+        fields: Vec<reflect::Named<reflect::Format>>,
+    },
+    Enum {
+        id_to_field: std::collections::BTreeMap<u32, reflect::Named<reflect::VariantFormat>>,
+    },
+}
+
 struct Node {
     name: String,
-    children: std::collections::HashSet<String>,
-    fields: Vec<serde_reflection::Named<serde_reflection::Format>>,
+    class: NodeClass,
     required: bool,
 }
 
@@ -130,18 +150,17 @@ fn generate_dataclasses<Writer: std::io::Write, Structure>(
     default_structure: &Structure,
     mut parameters: DataclassParameters,
 ) where
-    Structure: serde::Serialize,
+    Structure: serde::Serialize + serde::de::Deserialize<'static>,
 {
-    let mut tracer = serde_reflection::Tracer::new(
-        serde_reflection::TracerConfig::default().record_samples_for_structs(true),
-    );
-    let mut samples = serde_reflection::Samples::new();
+    let mut samples = reflect::Samples::new();
+    let mut tracer =
+        reflect::Tracer::new(reflect::TracerConfig::default().record_samples_for_structs(true));
     let root_name = match tracer
-        .trace_value(&mut samples, default_structure)
+        .recursive_trace(&mut samples, default_structure)
         .unwrap()
         .0
     {
-        serde_reflection::Format::TypeName(name) => name,
+        reflect::Format::TypeName(name) => name,
         _ => panic!("the root format is not a type name"),
     };
     if let Some(new_root_name) = parameters.new_root_name {
@@ -155,40 +174,51 @@ fn generate_dataclasses<Writer: std::io::Write, Structure>(
         if nodes.iter().find(|node| node.name == *name).is_some() {
             panic!("multiple nodes have the same name \"{}\"", name);
         }
-        let fields = match format {
-            serde_reflection::ContainerFormat::UnitStruct => Vec::new(),
-            serde_reflection::ContainerFormat::NewTypeStruct(format) => {
-                vec![serde_reflection::Named {
+        let mut class = match format {
+            reflect::ContainerFormat::UnitStruct => NodeClass::Dataclass {
+                children: std::collections::HashSet::new(),
+                fields: Vec::new(),
+            },
+            reflect::ContainerFormat::NewTypeStruct(format) => NodeClass::Dataclass {
+                children: std::collections::HashSet::new(),
+                fields: vec![reflect::Named {
                     name: "value".to_string(),
                     value: format.as_ref().clone(),
-                }]
-            }
-            serde_reflection::ContainerFormat::TupleStruct(formats) => {
-                vec![serde_reflection::Named {
+                }],
+            },
+            reflect::ContainerFormat::TupleStruct(formats) => NodeClass::Dataclass {
+                children: std::collections::HashSet::new(),
+                fields: vec![reflect::Named {
                     name: "value".to_string(),
-                    value: serde_reflection::Format::Tuple(formats.clone()),
-                }]
-            }
-            serde_reflection::ContainerFormat::Struct(fields) => fields.clone(),
-            serde_reflection::ContainerFormat::Enum(_) => {
-                panic!("{} uses an unsupported root type", name);
-            }
+                    value: reflect::Format::Tuple(formats.clone()),
+                }],
+            },
+            reflect::ContainerFormat::Struct(fields) => NodeClass::Dataclass {
+                children: std::collections::HashSet::new(),
+                fields: fields.clone(),
+            },
+            reflect::ContainerFormat::Enum(id_to_field) => NodeClass::Enum {
+                id_to_field: id_to_field.clone(),
+            },
         };
-        let mut children = std::collections::HashSet::new();
-        for field in fields.iter() {
-            if !parameters.skip_fields.contains(&field.name) {
-                match &field.value {
-                    serde_reflection::Format::TypeName(name) => {
-                        children.insert(name.to_owned());
+        match &mut class {
+            NodeClass::Dataclass { children, fields } => {
+                for field in fields.iter() {
+                    if !parameters.skip_fields.contains(&field.name) {
+                        match &field.value {
+                            reflect::Format::TypeName(name) => {
+                                children.insert(name.to_owned());
+                            }
+                            _ => (),
+                        }
                     }
-                    _ => (),
                 }
             }
+            _ => (),
         }
         nodes.push(Node {
             name: name.clone(),
-            children,
-            fields,
+            class,
             required: false,
         });
     }
@@ -203,12 +233,20 @@ fn generate_dataclasses<Writer: std::io::Write, Structure>(
                     .find(|node| node.name == node_name)
                     .unwrap();
                 node.required = true;
-                new_nodes_names_to_update.extend(
-                    node.children
-                        .iter()
-                        .filter(|child| !nodes_names_updated.contains(*child))
-                        .map(|child| child.clone()),
-                );
+                match &node.class {
+                    NodeClass::Dataclass {
+                        children,
+                        fields: _,
+                    } => {
+                        new_nodes_names_to_update.extend(
+                            children
+                                .iter()
+                                .filter(|child| !nodes_names_updated.contains(*child))
+                                .map(|child| child.clone()),
+                        );
+                    }
+                    _ => (),
+                }
                 nodes_names_updated.insert(node.name.clone());
             }
             nodes_names_to_update = new_nodes_names_to_update;
@@ -218,13 +256,16 @@ fn generate_dataclasses<Writer: std::io::Write, Structure>(
         let mut generated_nodes = std::collections::HashSet::new();
         loop {
             let mut nodes_to_generate = Vec::new();
-            for node in nodes.iter_mut() {
+            for node in nodes.iter() {
                 if node.required
                     && !generated_nodes.contains(&node.name)
-                    && node
-                        .children
-                        .iter()
-                        .all(|child| generated_nodes.contains(child))
+                    && match &node.class {
+                        NodeClass::Dataclass {
+                            children,
+                            fields: _,
+                        } => children.iter().all(|child| generated_nodes.contains(child)),
+                        _ => true,
+                    }
                 {
                     nodes_to_generate.push(node);
                 }
@@ -239,43 +280,80 @@ fn generate_dataclasses<Writer: std::io::Write, Structure>(
                 break;
             } else {
                 nodes_to_generate.sort_by(|a, b| a.name.cmp(&b.name));
-                for node in nodes_to_generate {
-                    // create a (leaked) &'static str for compatibility with samples.value.
-                    let static_name = Box::leak(node.name.clone().into_boxed_str());
-                    let values = match samples.value(static_name).unwrap() {
-                        serde_reflection::Value::Seq(values) => values,
-                        _ => panic!("{} is not a sequence or dictionary", node.name),
-                    };
+                for node in nodes_to_generate.iter() {
                     let name = parameters
                         .name_to_new_name
                         .get(&node.name)
                         .unwrap_or_else(|| &node.name)
                         .clone();
-                    writeln!(
-                        writer,
-                        concat!("\n", "\n", "@dataclasses.dataclass{}\n", "class {}:",),
-                        if parameters.frozen {
-                            "(frozen=True)"
-                        } else {
-                            ""
-                        },
-                        name,
-                    )
-                    .unwrap();
-                    for (index, field) in node.fields.iter().enumerate() {
-                        if !parameters.skip_fields.contains(&field.name) {
+                    match &node.class {
+                        NodeClass::Dataclass {
+                            children: _,
+                            fields,
+                        } => {
+                            let values = match samples.value(&node.name).unwrap() {
+                                reflect::Value::Seq(values) => values,
+                                _ => panic!("{} is not a sequence or dictionary", node.name),
+                            };
                             writeln!(
                                 writer,
-                                "    {}: {} = {}",
-                                field.name,
-                                quote_type(&field.value, &parameters.name_to_new_name),
-                                match &field.value {
-                                    serde_reflection::Format::TypeName(name) =>
-                                        format!("dataclasses.field(default_factory={name})"),
-                                    _ => value_to_string(&values[index]),
+                                concat!("\n", "\n", "@dataclasses.dataclass{}\n", "class {}:",),
+                                if parameters.frozen {
+                                    "(frozen=True)"
+                                } else {
+                                    ""
                                 },
+                                name,
                             )
                             .unwrap();
+                            for (index, field) in fields.iter().enumerate() {
+                                if !parameters.skip_fields.contains(&field.name) {
+                                    writeln!(
+                                        writer,
+                                        "    {}: {} = {}",
+                                        field.name,
+                                        quote_type(&field.value, &parameters.name_to_new_name),
+                                        match &field.value {
+                                            reflect::Format::TypeName(name) => {
+                                                let node = nodes
+                                                    .iter()
+                                                    .find(|node| node.name == *name)
+                                                    .unwrap();
+                                                match &node.class {
+                                                    NodeClass::Dataclass { children: _, fields: _ } => {
+                                                        format!("dataclasses.field(default_factory={name})")
+                                                    },
+                                                    NodeClass::Enum { id_to_field } => {
+                                                        format!("{}.{}", name, camel_case_to_screaming_case(&id_to_field.get(&0).unwrap().name))
+                                                    },
+                                                }
+                                            },
+                                            _ => value_to_string(&values[index]),
+                                        },
+                                    )
+                                    .unwrap();
+                                }
+                            }
+                        }
+                        NodeClass::Enum { id_to_field } => {
+                            writeln!(writer, concat!("\n", "\n", "class {}(enum.Enum):",), name,)
+                                .unwrap();
+                            for (id, field) in id_to_field {
+                                match field.value {
+                                    reflect::VariantFormat::Unit => (),
+                                    _ => panic!(
+                                        "unsupported non-unit field {} in {}",
+                                        field.name, name
+                                    ),
+                                }
+                                writeln!(
+                                    writer,
+                                    "    {} = {}",
+                                    camel_case_to_screaming_case(&field.name),
+                                    id
+                                )
+                                .unwrap();
+                            }
                         }
                     }
                     if parameters.serializable {
@@ -330,17 +408,17 @@ macro_rules! generate {
                 "class Speed(enum.Enum):"
             )).unwrap();
             {
-                let mut tracer = serde_reflection::Tracer::new(serde_reflection::TracerConfig::default());
+                let mut tracer = reflect::Tracer::new(reflect::TracerConfig::default());
                 let (_, samples) = tracer.trace_simple_type::<neuromorphic_drivers::usb::Speed>().unwrap();
                 let registry = tracer.registry().unwrap();
                 for (name, format) in registry {
                     match format {
-                        serde_reflection::ContainerFormat::Enum(variants) => {
+                        reflect::ContainerFormat::Enum(variants) => {
                             for (variant, sample) in variants.iter().zip(samples.iter()) {
                                 writeln!(
                                     writer,
                                     "    {} = \"{}\"",
-                                    variant.1.name.to_uppercase(),
+                                    camel_case_to_screaming_case(&variant.1.name),
                                     sample.to_string(),
                                 ).unwrap();
                             }
@@ -370,6 +448,7 @@ macro_rules! generate {
                     "from __future__ import annotations\n",
                     "\n",
                     "import dataclasses\n",
+                    "import enum\n",
                     "import types\n",
                     "import typing\n",
                     "\n",

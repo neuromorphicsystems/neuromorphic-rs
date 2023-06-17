@@ -168,48 +168,40 @@ impl Device {
                             pyo3::Python::with_gil(|python| -> pyo3::PyResult<pyo3::PyObject> {
                                 match slf.adapter.as_ref() {
                                     Some(adapter) => Ok((
-                                        (
-                                            std::time::SystemTime::now()
+                                        std::time::SystemTime::now()
+                                            .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                                            .unwrap_or(std::time::Duration::from_secs(0))
+                                            .as_secs_f64(),
+                                        Some((
+                                            buffer_view
+                                                .system_time
                                                 .duration_since(std::time::SystemTime::UNIX_EPOCH)
                                                 .unwrap_or(std::time::Duration::from_secs(0))
                                                 .as_secs_f64(),
-                                            Some((
-                                                buffer_view
-                                                    .system_time
-                                                    .duration_since(
-                                                        std::time::SystemTime::UNIX_EPOCH,
-                                                    )
-                                                    .unwrap_or(std::time::Duration::from_secs(0))
-                                                    .as_secs_f64(),
-                                                buffer_view.read,
-                                                buffer_view.write_range,
-                                                buffer_view.ring_length,
-                                            )),
-                                        ),
+                                            buffer_view.read,
+                                            buffer_view.write_range,
+                                            buffer_view.ring_length,
+                                        )),
                                         adapter
                                             .borrow_mut()
                                             .slice_to_dict(python, buffer_view.slice)?,
                                     )
                                         .into_py(python)),
                                     None => Ok((
-                                        (
-                                            std::time::SystemTime::now()
+                                        std::time::SystemTime::now()
+                                            .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                                            .unwrap_or(std::time::Duration::from_secs(0))
+                                            .as_secs_f64(),
+                                        Some((
+                                            buffer_view
+                                                .system_time
                                                 .duration_since(std::time::SystemTime::UNIX_EPOCH)
                                                 .unwrap_or(std::time::Duration::from_secs(0))
                                                 .as_secs_f64(),
-                                            Some((
-                                                buffer_view
-                                                    .system_time
-                                                    .duration_since(
-                                                        std::time::SystemTime::UNIX_EPOCH,
-                                                    )
-                                                    .unwrap_or(std::time::Duration::from_secs(0))
-                                                    .as_secs_f64(),
-                                                buffer_view.read,
-                                                buffer_view.write_range,
-                                                buffer_view.ring_length,
-                                            )),
-                                        ),
+                                            buffer_view.read,
+                                            buffer_view.write_range,
+                                            buffer_view.ring_length,
+                                        )),
                                         pyo3::types::PyBytes::new(python, buffer_view.slice),
                                     )
                                         .into_py(python)),
@@ -230,44 +222,40 @@ impl Device {
                 {
                     return pyo3::Python::with_gil(|python| match slf.adapter.as_ref() {
                         Some(adapter) => Ok((
-                            (
-                                std::time::SystemTime::now()
+                            std::time::SystemTime::now()
+                                .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                                .unwrap_or(std::time::Duration::from_secs(0))
+                                .as_secs_f64(),
+                            Some((
+                                buffer_view
+                                    .system_time
                                     .duration_since(std::time::SystemTime::UNIX_EPOCH)
                                     .unwrap_or(std::time::Duration::from_secs(0))
                                     .as_secs_f64(),
-                                Some((
-                                    buffer_view
-                                        .system_time
-                                        .duration_since(std::time::SystemTime::UNIX_EPOCH)
-                                        .unwrap_or(std::time::Duration::from_secs(0))
-                                        .as_secs_f64(),
-                                    buffer_view.read,
-                                    buffer_view.write_range,
-                                    buffer_view.ring_length,
-                                )),
-                            ),
+                                buffer_view.read,
+                                buffer_view.write_range,
+                                buffer_view.ring_length,
+                            )),
                             adapter
                                 .borrow_mut()
                                 .slice_to_dict(python, buffer_view.slice)?,
                         )
                             .into_py(python)),
                         None => Ok((
-                            (
-                                std::time::SystemTime::now()
+                            std::time::SystemTime::now()
+                                .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                                .unwrap_or(std::time::Duration::from_secs(0))
+                                .as_secs_f64(),
+                            Some((
+                                buffer_view
+                                    .system_time
                                     .duration_since(std::time::SystemTime::UNIX_EPOCH)
                                     .unwrap_or(std::time::Duration::from_secs(0))
                                     .as_secs_f64(),
-                                Some((
-                                    buffer_view
-                                        .system_time
-                                        .duration_since(std::time::SystemTime::UNIX_EPOCH)
-                                        .unwrap_or(std::time::Duration::from_secs(0))
-                                        .as_secs_f64(),
-                                    buffer_view.read,
-                                    buffer_view.write_range,
-                                    buffer_view.ring_length,
-                                )),
-                            ),
+                                buffer_view.read,
+                                buffer_view.write_range,
+                                buffer_view.ring_length,
+                            )),
                             pyo3::types::PyBytes::new(python, buffer_view.slice),
                         )
                             .into_py(python)),
