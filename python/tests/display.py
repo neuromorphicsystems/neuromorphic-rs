@@ -101,10 +101,8 @@ class Canvas(vispy.app.Canvas):
             1,
         )
         vispy.gloo.set_clear_color("#292929")
+        self.timer = vispy.app.Timer("auto", connect=self.update, start=True)
         self.show()
-
-    def trigger_draw(self):
-        super().update()
 
     def on_resize(self, event):
         if self.program is not None:
@@ -171,15 +169,6 @@ if __name__ == "__main__":
         )
         thread_context = {"running": True}
 
-        def canvas_worker():
-            next_frame = time.monotonic()
-            while thread_context["running"]:
-                delta = next_frame - time.monotonic()
-                if delta > 0:
-                    time.sleep(delta)
-                canvas.trigger_draw()
-                next_frame += 1.0 / 60.0
-
         def camera_worker():
             for status, packet in device:
                 if not thread_context["running"]:
@@ -199,11 +188,8 @@ if __name__ == "__main__":
                     if status.packet is not None and status.packet.backlog() > 1000:
                         device.clear_backlog(until=0)
 
-        canvas_thread = threading.Thread(target=canvas_worker)
-        canvas_thread.start()
         camera_thread = threading.Thread(target=camera_worker)
         camera_thread.start()
         vispy.app.run()
         thread_context["running"] = False
         camera_thread.join()
-        canvas_thread.join()

@@ -215,7 +215,6 @@ impl device::Usb for Device {
             ],
             TIMEOUT,
         )?; // psee,ccam5_imx636 psee,ccam5_gen42
-        let _ = Reserved0014::default().read(&handle)?; // ?
         request(
             &handle,
             &[0x72, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
@@ -240,7 +239,6 @@ impl device::Usb for Device {
             ],
             TIMEOUT,
         )?; // psee,ccam5_imx636 psee,ccam5_gen42
-        let _ = Reserved0014::default().read(&handle)?; // ?
 
         // issd_evk3_imx636_stop in hal_psee_plugins/include/devices/imx636/imx636_evk3_issd.h {
         RoiCtrl {
@@ -257,7 +255,6 @@ impl device::Usb for Device {
         Unknown002C { value: 0x0022c324 }.write(&handle)?;
         RoCtrl { value: 0x00000002 }.write(&handle)?;
         std::thread::sleep(std::time::Duration::from_millis(1));
-        let _ = TimeBaseCtrl::default().read(&handle)?;
         TimeBaseCtrl {
             enable: 0,
             external: 0,
@@ -414,27 +411,16 @@ impl device::Usb for Device {
         ReadoutCtrl { value: 0x00000200 }.write(&handle)?;
         // }
 
-        let _ = AdcControl::default().read(&handle)?;
         AdcControl { value: 0x00007641 }.write(&handle)?;
-        let _ = AdcControl::default().read(&handle)?;
         AdcControl { value: 0x00007643 }.write(&handle)?;
-        let _ = AdcMiscCtrl::default().read(&handle)?;
         AdcMiscCtrl { value: 0x00000212 }.write(&handle)?;
-        let _ = TempCtrl::default().read(&handle)?;
         TempCtrl { value: 0x00200082 }.write(&handle)?;
-        let _ = TempCtrl::default().read(&handle)?;
         TempCtrl { value: 0x00200083 }.write(&handle)?;
-        let _ = AdcControl::default().read(&handle)?;
         AdcControl { value: 0x00007641 }.write(&handle)?;
-        let _ = IphMirrCtrl::default().read(&handle)?;
         IphMirrCtrl { value: 0x00000003 }.write(&handle)?;
-        let _ = IphMirrCtrl::default().read(&handle)?;
         IphMirrCtrl { value: 0x00000003 }.write(&handle)?;
-        let _ = LifoCtrl::default().read(&handle)?;
         LifoCtrl { value: 0x00000001 }.write(&handle)?;
-        let _ = LifoCtrl::default().read(&handle)?;
         LifoCtrl { value: 0x00000003 }.write(&handle)?;
-        let _ = LifoCtrl::default().read(&handle)?;
         LifoCtrl { value: 0x00000007 }.write(&handle)?;
 
         // Event Rate Controler (ERC)
@@ -505,38 +491,6 @@ impl device::Usb for Device {
         }
         .write(&handle)?;
         ErcReserved6000 { value: 0x00155401 }.write(&handle)?;
-
-        /*
-        let _ = ErcReserved6000::default().read(&handle)?;
-        ErcReserved6000 { value: 0x00155400 }.write(&handle)?;
-        let _ = ErcInDropRateControl::default().read(&handle)?;
-        ErcInDropRateControl {
-            enable: 1,
-            reserved_1_32: 0,
-        }
-        .write(&handle)?;
-        let _ = ErcReferencePeriod::default().read(&handle)?;
-        ErcReferencePeriod { value: 0x000000c8 }.write(&handle)?;
-        let _ = ErcTdTargetEventRate::default().read(&handle)?;
-        ErcTdTargetEventRate {
-            per_period: 4000,
-            reserved_22_32: 0,
-        }
-        .write(&handle)?;
-        let _ = ErcControl::default().read(&handle)?;
-        ErcControl { value: 0x00000003 }.write(&handle)?;
-        let _ = ErcReserved602C::default().read(&handle)?;
-        ErcReserved602C { value: 0x00000001 }.write(&handle)?;
-        for offset in 0..230 {
-            let register = ErcReserved6800 { value: 0x08080808 }.offset(offset);
-            let _ = register.read(&handle)?;
-            register.write(&handle)?;
-        }
-        let _ = ErcReserved602C::default().read(&handle)?;
-        ErcReserved602C { value: 0x00000002 }.write(&handle)?;
-         */
-
-        let _ = EdfReserved7004::default().read(&handle)?;
         EdfReserved7004 {
             reserved_0_10: 0b0111111111,
             external_trigger: if configuration.enable_external_trigger {
@@ -567,11 +521,6 @@ impl device::Usb for Device {
             TIMEOUT,
         )?;
         update_configuration(&handle, None, &configuration)?;
-        let _ = ErcReferencePeriod::default().read(&handle)?;
-        let _ = ErcTdTargetEventRate::default().read(&handle)?;
-        let _ = ErcReserved6000::default().read(&handle)?;
-        let _ = ErcReserved6000::default().read(&handle)?;
-        let _ = TDroppingControl::default().read(&handle)?;
 
         // issd_evk3_imx636_start in hal_psee_plugins/include/devices/imx636/imx636_evk3_issd.h {
         MipiControl { value: 0x000002f9 }.write(&handle)?;
@@ -711,7 +660,6 @@ impl Drop for Device {
         let _ = Unknown002C { value: 0x0022c324 }.write(&self.handle);
         let _ = RoCtrl { value: 0x00000002 }.write(&self.handle);
         std::thread::sleep(std::time::Duration::from_millis(1));
-        let _ = TimeBaseCtrl::default().read(&self.handle);
         let _ = TimeBaseCtrl {
             enable: 0,
             external: 0,
@@ -893,7 +841,6 @@ fn update_configuration(
                 },
             }
             .offset(offset);
-            let _ = register.read(&handle)?;
             register.write(&handle)?;
         }
         for offset in 0..((configuration.y_mask.len() as u32) * 2 - 1) {
@@ -928,7 +875,6 @@ fn update_configuration(
                 },
             }
             .offset(offset);
-            let _ = register.read(&handle)?;
             register.write(&handle)?;
         }
         RoiCtrl {
@@ -967,7 +913,6 @@ trait Register {
     fn offset(&self, registers: u32) -> RuntimeRegister;
 
     fn read(&self, handle: &rusb::DeviceHandle<rusb::Context>) -> Result<u32, Error> {
-        /*
         let address = self.address();
         let buffer = [
             0x02,
@@ -1000,8 +945,6 @@ trait Register {
         }
         // unwrap: slice has the right number of bytes
         Ok(u32::from_le_bytes(result[16..20].try_into().unwrap()))
-        */
-        Ok(0)
     }
 
     fn write(&self, handle: &rusb::DeviceHandle<rusb::Context>) -> Result<(), Error> {
