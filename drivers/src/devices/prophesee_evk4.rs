@@ -510,35 +510,51 @@ impl device::Usb for Device {
         // issd_evk3_imx636_start in hal_psee_plugins/include/devices/imx636/imx636_evk3_issd.h {
         MipiControl { value: 0x000002f9 }.write(&handle)?;
         RoCtrl { value: 0x00000000 }.write(&handle)?;
-        let _ = TimeBaseCtrl::default().read(&handle)?;
-        TimeBaseCtrl {
-            enable: 1,
-            external: match configuration.clock {
-                Clock::Internal => 0,
-                _ => 1,
-            },
-            primary: match configuration.clock {
-                Clock::External => 0,
-                _ => 1,
-            },
-            external_enable: match configuration.clock {
-                Clock::Internal => 0,
-                _ => 1,
-            },
-            reserved_4_32: 0x64,
-        }
-        .write(&handle)?;
         match configuration.clock {
-            Clock::Internal => (),
+            Clock::Internal => {
+                TimeBaseCtrl {
+                    enable: 1,
+                    external: 0,
+                    primary: 1,
+                    external_enable: 0,
+                    reserved_4_32: 0x64,
+                }
+                .write(&handle)?;
+            }
             Clock::InternalWithOutputEnabled => {
+                TimeBaseCtrl {
+                    enable: 0,
+                    external: 1,
+                    primary: 1,
+                    external_enable: 1,
+                    reserved_4_32: 0x64,
+                }
+                .write(&handle)?;
                 DigPad2Ctrl {
                     reserved_0_16: 0xFCCF,
                     sync: 0b1100,
                     reserved_20_32: 0xCCF,
                 }
                 .write(&handle)?;
+                std::thread::sleep(std::time::Duration::from_millis(1));
+                TimeBaseCtrl {
+                    enable: 1,
+                    external: 1,
+                    primary: 1,
+                    external_enable: 1,
+                    reserved_4_32: 0x64,
+                }
+                .write(&handle)?;
             }
             Clock::External => {
+                TimeBaseCtrl {
+                    enable: 1,
+                    external: 1,
+                    primary: 0,
+                    external_enable: 1,
+                    reserved_4_32: 0x64,
+                }
+                .write(&handle)?;
                 DigPad2Ctrl {
                     reserved_0_16: 0xFCCF,
                     sync: 0b1111,
@@ -628,7 +644,7 @@ impl Drop for Device {
         .write(&self.handle);
         let _ = Unknown002C { value: 0x0022c324 }.write(&self.handle);
         let _ = RoCtrl { value: 0x00000002 }.write(&self.handle);
-        let _ = std::thread::sleep(std::time::Duration::from_millis(1));
+        std::thread::sleep(std::time::Duration::from_millis(1));
         let _ = TimeBaseCtrl::default().read(&self.handle);
         let _ = TimeBaseCtrl {
             enable: 0,
@@ -885,6 +901,7 @@ trait Register {
     fn offset(&self, registers: u32) -> RuntimeRegister;
 
     fn read(&self, handle: &rusb::DeviceHandle<rusb::Context>) -> Result<u32, Error> {
+        /*
         let address = self.address();
         let buffer = [
             0x02,
@@ -917,6 +934,8 @@ trait Register {
         }
         // unwrap: slice has the right number of bytes
         Ok(u32::from_le_bytes(result[16..20].try_into().unwrap()))
+        */
+        Ok(0)
     }
 
     fn write(&self, handle: &rusb::DeviceHandle<rusb::Context>) -> Result<(), Error> {
