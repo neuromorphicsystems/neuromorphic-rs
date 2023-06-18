@@ -27,7 +27,7 @@ fn quote_type(
         reflect::Format::Str => "str".into(),
         reflect::Format::Bytes => "bytes".into(),
         reflect::Format::Option(format) => {
-            format!("{} | None", quote_type(format, name_to_new_name))
+            format!("typing.Optional[{}]", quote_type(format, name_to_new_name))
         }
         reflect::Format::Seq(format) => {
             format!("list[{}]", quote_type(format, name_to_new_name))
@@ -206,6 +206,11 @@ fn generate_dataclasses<Writer: std::io::Write, Structure>(
                 for field in fields.iter() {
                     if !parameters.skip_fields.contains(&field.name) {
                         match &field.value {
+                            reflect::Format::Option(format) => {
+                                if let reflect::Format::TypeName(name) = format.as_ref() {
+                                    children.insert(name.to_owned());
+                                }
+                            }
                             reflect::Format::TypeName(name) => {
                                 children.insert(name.to_owned());
                             }
@@ -291,10 +296,10 @@ fn generate_dataclasses<Writer: std::io::Write, Structure>(
                             children: _,
                             fields,
                         } => {
-                            let values = match samples.value(&node.name).unwrap() {
+                            let values = samples.value(&node.name).map(|value| match value {
                                 reflect::Value::Seq(values) => values,
                                 _ => panic!("{} is not a sequence or dictionary", node.name),
-                            };
+                            });
                             writeln!(
                                 writer,
                                 concat!("\n", "\n", "@dataclasses.dataclass{}\n", "class {}:",),
@@ -310,7 +315,7 @@ fn generate_dataclasses<Writer: std::io::Write, Structure>(
                                 if !parameters.skip_fields.contains(&field.name) {
                                     writeln!(
                                         writer,
-                                        "    {}: {} = {}",
+                                        "    {}: {}{}",
                                         field.name,
                                         quote_type(&field.value, &parameters.name_to_new_name),
                                         match &field.value {
@@ -321,14 +326,17 @@ fn generate_dataclasses<Writer: std::io::Write, Structure>(
                                                     .unwrap();
                                                 match &node.class {
                                                     NodeClass::Dataclass { children: _, fields: _ } => {
-                                                        format!("dataclasses.field(default_factory={name})")
+                                                        format!(" = dataclasses.field(default_factory={name})")
                                                     },
                                                     NodeClass::Enum { id_to_field } => {
-                                                        format!("{}.{}", name, camel_case_to_screaming_case(&id_to_field.get(&0).unwrap().name))
+                                                        format!(" = {}.{}", name, camel_case_to_screaming_case(&id_to_field.get(&0).unwrap().name))
                                                     },
                                                 }
                                             },
-                                            _ => value_to_string(&values[index]),
+                                            _ => match values {
+                                                Some(values) => format!(" = {}", value_to_string(&values[index])),
+                                                None => "".to_owned(),
+                                            },
                                         },
                                     )
                                     .unwrap();

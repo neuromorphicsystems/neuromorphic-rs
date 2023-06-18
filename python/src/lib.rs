@@ -1,6 +1,8 @@
 mod adapters;
 mod structured_array;
 extern crate neuromorphic_drivers as neuromorphic_drivers_rs;
+use std::ops::DerefMut;
+
 use adapters::Adapter;
 use pyo3::IntoPy;
 
@@ -31,6 +33,13 @@ struct Device {
     iterator_timeout: Option<std::time::Duration>,
     error_flag: neuromorphic_drivers_rs::error::Flag<neuromorphic_drivers_rs::Error>,
 }
+
+// unsafe workaround until auto traits are stabilized
+// see https://docs.rs/pyo3/0.19.0/pyo3/marker/index.html
+struct DeviceReference<'a>(pub &'a mut neuromorphic_drivers_rs::Device);
+unsafe impl Send for DeviceReference<'_> {}
+struct AdapterReference<'a>(pub &'a mut neuromorphic_drivers_rs::Adapter);
+unsafe impl Send for AdapterReference<'_> {}
 
 #[pyo3::pymethods]
 impl Device {
@@ -123,34 +132,65 @@ impl Device {
         slf
     }
 
-    fn __next__(slf: pyo3::PyRef<Self>) -> pyo3::PyResult<Option<pyo3::PyObject>> {
+    fn __next__(
+        slf: pyo3::PyRef<Self>,
+        python: pyo3::Python,
+    ) -> pyo3::PyResult<Option<pyo3::PyObject>> {
         let error_flag = slf.error_flag.clone();
-        let mut device = slf
+        let iterator_timeout = slf.iterator_timeout.clone();
+        let mut device_reference = slf
             .device
             .as_ref()
             .ok_or(pyo3::exceptions::PyRuntimeError::new_err(
                 "__next__ called after __exit__",
             ))?
-            .borrow_mut();
-        match slf.iterator_timeout.as_ref() {
+            .try_borrow_mut()
+            .map_err(|_| {
+                pyo3::exceptions::PyRuntimeError::new_err(
+                    "__next__ called while device is used by a different thread",
+                )
+            })?;
+        let device = DeviceReference(device_reference.deref_mut());
+        let mut adapter_reference = match slf.adapter.as_ref() {
+            Some(adapter) => Some(adapter.try_borrow_mut().map_err(|_| {
+                pyo3::exceptions::PyRuntimeError::new_err(
+                    "__next__ called while device is used by a different thread",
+                )
+            })?),
+            None => None,
+        };
+        let mut adapter = match &mut adapter_reference {
+            Some(adapter) => Some(AdapterReference(adapter.deref_mut())),
+            None => None,
+        };
+        python.allow_threads(|| match iterator_timeout {
             Some(iterator_timeout) => {
                 if let Some(error) = error_flag.load() {
                     return Err(pyo3::exceptions::PyRuntimeError::new_err(format!(
                         "{error:?}"
                     )));
                 }
-                device
-                    .next_with_timeout(iterator_timeout)
-                    .map_or_else(
-                        || {
-                            pyo3::Python::with_gil(|python| match slf.adapter.as_ref() {
-                                Some(_) => Ok((
+                (match device.0.next_with_timeout(&iterator_timeout) {
+                    Some(buffer_view) => {
+                        pyo3::Python::with_gil(|python| -> pyo3::PyResult<pyo3::PyObject> {
+                            match &mut adapter {
+                                Some(adapter) => Ok((
                                     std::time::SystemTime::now()
                                         .duration_since(std::time::SystemTime::UNIX_EPOCH)
                                         .unwrap_or(std::time::Duration::from_secs(0))
                                         .as_secs_f64(),
-                                    None::<(f64, usize, (usize, usize), usize)>,
-                                    pyo3::types::PyDict::new(python),
+                                    Some((
+                                        buffer_view
+                                            .system_time
+                                            .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                                            .unwrap_or(std::time::Duration::from_secs(0))
+                                            .as_secs_f64(),
+                                        buffer_view.read,
+                                        buffer_view.write_range,
+                                        buffer_view.ring_length,
+                                        adapter.0.current_t(),
+                                    )),
+                                    adapter.0.slice_to_dict(python, buffer_view.slice)?,
                                 )
                                     .into_py(python)),
                                 None => Ok((
@@ -158,58 +198,45 @@ impl Device {
                                         .duration_since(std::time::SystemTime::UNIX_EPOCH)
                                         .unwrap_or(std::time::Duration::from_secs(0))
                                         .as_secs_f64(),
-                                    None::<(f64, usize, (usize, usize), usize)>,
-                                    None::<&pyo3::types::PyBytes>,
+                                    Some((
+                                        buffer_view
+                                            .system_time
+                                            .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                                            .unwrap_or(std::time::Duration::from_secs(0))
+                                            .as_secs_f64(),
+                                        buffer_view.read,
+                                        buffer_view.write_range,
+                                        buffer_view.ring_length,
+                                        None::<u64>,
+                                    )),
+                                    pyo3::types::PyBytes::new(python, buffer_view.slice),
                                 )
                                     .into_py(python)),
-                            })
-                        },
-                        |buffer_view| {
-                            pyo3::Python::with_gil(|python| -> pyo3::PyResult<pyo3::PyObject> {
-                                match slf.adapter.as_ref() {
-                                    Some(adapter) => Ok((
-                                        std::time::SystemTime::now()
-                                            .duration_since(std::time::SystemTime::UNIX_EPOCH)
-                                            .unwrap_or(std::time::Duration::from_secs(0))
-                                            .as_secs_f64(),
-                                        Some((
-                                            buffer_view
-                                                .system_time
-                                                .duration_since(std::time::SystemTime::UNIX_EPOCH)
-                                                .unwrap_or(std::time::Duration::from_secs(0))
-                                                .as_secs_f64(),
-                                            buffer_view.read,
-                                            buffer_view.write_range,
-                                            buffer_view.ring_length,
-                                        )),
-                                        adapter
-                                            .borrow_mut()
-                                            .slice_to_dict(python, buffer_view.slice)?,
-                                    )
-                                        .into_py(python)),
-                                    None => Ok((
-                                        std::time::SystemTime::now()
-                                            .duration_since(std::time::SystemTime::UNIX_EPOCH)
-                                            .unwrap_or(std::time::Duration::from_secs(0))
-                                            .as_secs_f64(),
-                                        Some((
-                                            buffer_view
-                                                .system_time
-                                                .duration_since(std::time::SystemTime::UNIX_EPOCH)
-                                                .unwrap_or(std::time::Duration::from_secs(0))
-                                                .as_secs_f64(),
-                                            buffer_view.read,
-                                            buffer_view.write_range,
-                                            buffer_view.ring_length,
-                                        )),
-                                        pyo3::types::PyBytes::new(python, buffer_view.slice),
-                                    )
-                                        .into_py(python)),
-                                }
-                            })
-                        },
-                    )
-                    .map(|object| Some(object))
+                            }
+                        })
+                    }
+                    None => pyo3::Python::with_gil(|python| match &mut adapter {
+                        Some(_) => Ok((
+                            std::time::SystemTime::now()
+                                .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                                .unwrap_or(std::time::Duration::from_secs(0))
+                                .as_secs_f64(),
+                            None::<(f64, usize, (usize, usize), usize, u64)>,
+                            pyo3::types::PyDict::new(python),
+                        )
+                            .into_py(python)),
+                        None => Ok((
+                            std::time::SystemTime::now()
+                                .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                                .unwrap_or(std::time::Duration::from_secs(0))
+                                .as_secs_f64(),
+                            None::<(f64, usize, (usize, usize), usize, u64)>,
+                            None::<&pyo3::types::PyBytes>,
+                        )
+                            .into_py(python)),
+                    }),
+                })
+                .map(|object| Some(object))
             }
             None => loop {
                 if let Some(error) = error_flag.load() {
@@ -217,10 +244,11 @@ impl Device {
                         "{error:?}"
                     )));
                 }
-                if let Some(buffer_view) =
-                    device.next_with_timeout(&std::time::Duration::from_millis(100))
+                if let Some(buffer_view) = device
+                    .0
+                    .next_with_timeout(&std::time::Duration::from_millis(100))
                 {
-                    return pyo3::Python::with_gil(|python| match slf.adapter.as_ref() {
+                    return pyo3::Python::with_gil(|python| match adapter {
                         Some(adapter) => Ok((
                             std::time::SystemTime::now()
                                 .duration_since(std::time::SystemTime::UNIX_EPOCH)
@@ -235,10 +263,9 @@ impl Device {
                                 buffer_view.read,
                                 buffer_view.write_range,
                                 buffer_view.ring_length,
+                                adapter.0.current_t(),
                             )),
-                            adapter
-                                .borrow_mut()
-                                .slice_to_dict(python, buffer_view.slice)?,
+                            adapter.0.slice_to_dict(python, buffer_view.slice)?,
                         )
                             .into_py(python)),
                         None => Ok((
@@ -255,6 +282,7 @@ impl Device {
                                 buffer_view.read,
                                 buffer_view.write_range,
                                 buffer_view.ring_length,
+                                None::<u64>,
                             )),
                             pyo3::types::PyBytes::new(python, buffer_view.slice),
                         )
@@ -263,40 +291,63 @@ impl Device {
                     .map(|object| Some(object));
                 }
             },
-        }
+        })
     }
 
-    fn clear_backlog(slf: pyo3::PyRef<Self>, until: usize) -> pyo3::PyResult<()> {
+    fn clear_backlog(
+        slf: pyo3::PyRef<Self>,
+        python: pyo3::Python,
+        until: usize,
+    ) -> pyo3::PyResult<()> {
         let error_flag = slf.error_flag.clone();
-        let mut device = slf
+        let mut device_reference = slf
             .device
             .as_ref()
             .ok_or(pyo3::exceptions::PyRuntimeError::new_err(
                 "__next__ called after __exit__",
             ))?
-            .borrow_mut();
-        loop {
+            .try_borrow_mut()
+            .map_err(|_| {
+                pyo3::exceptions::PyRuntimeError::new_err(
+                    "__next__ called while device is used by a different thread",
+                )
+            })?;
+        let device = DeviceReference(device_reference.deref_mut());
+        let mut adapter_reference = match slf.adapter.as_ref() {
+            Some(adapter) => Some(adapter.try_borrow_mut().map_err(|_| {
+                pyo3::exceptions::PyRuntimeError::new_err(
+                    "__next__ called while device is used by a different thread",
+                )
+            })?),
+            None => None,
+        };
+        let mut adapter = match &mut adapter_reference {
+            Some(adapter) => Some(AdapterReference(adapter.deref_mut())),
+            None => None,
+        };
+        python.allow_threads(|| loop {
             if let Some(error) = error_flag.load() {
                 return Err(pyo3::exceptions::PyRuntimeError::new_err(format!(
                     "{error:?}"
                 )));
             }
-            if let Some(buffer_view) =
-                device.next_with_timeout(&std::time::Duration::from_millis(0))
+            if let Some(buffer_view) = device
+                .0
+                .next_with_timeout(&std::time::Duration::from_millis(0))
             {
                 if buffer_view.backlog() < until {
                     return Ok(());
                 }
-                match slf.adapter.as_ref() {
+                match &mut adapter {
                     Some(adapter) => {
-                        adapter.borrow_mut().consume(buffer_view.slice);
+                        adapter.0.consume(buffer_view.slice);
                     }
                     None => (),
                 }
             } else {
                 return Ok(());
             }
-        }
+        })
     }
 
     fn name(slf: pyo3::PyRef<Self>) -> pyo3::PyResult<String> {
@@ -306,7 +357,12 @@ impl Device {
             .ok_or(pyo3::exceptions::PyRuntimeError::new_err(
                 "name called after __exit__",
             ))?
-            .borrow()
+            .try_borrow()
+            .map_err(|_| {
+                pyo3::exceptions::PyRuntimeError::new_err(
+                    "name called while device is used by a different thread",
+                )
+            })?
             .name()
             .to_owned())
     }
@@ -316,9 +372,14 @@ impl Device {
             .device
             .as_ref()
             .ok_or(pyo3::exceptions::PyRuntimeError::new_err(
-                "name called after __exit__",
+                "serial called after __exit__",
             ))?
-            .borrow()
+            .try_borrow()
+            .map_err(|_| {
+                pyo3::exceptions::PyRuntimeError::new_err(
+                    "serial called while device is used by a different thread",
+                )
+            })?
             .serial())
     }
 
@@ -327,9 +388,14 @@ impl Device {
             .device
             .as_ref()
             .ok_or(pyo3::exceptions::PyRuntimeError::new_err(
-                "name called after __exit__",
+                "speed called after __exit__",
             ))?
-            .borrow()
+            .try_borrow()
+            .map_err(|_| {
+                pyo3::exceptions::PyRuntimeError::new_err(
+                    "speed called while device is used by a different thread",
+                )
+            })?
             .speed()
             .to_string())
     }

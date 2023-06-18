@@ -2,6 +2,8 @@ use crate::structured_array;
 use pyo3::IntoPy;
 
 pub trait Adapter {
+    fn current_t(&self) -> u64;
+
     fn consume(&mut self, slice: &[u8]);
 
     fn slice_to_dict(
@@ -12,6 +14,10 @@ pub trait Adapter {
 }
 
 impl Adapter for neuromorphic_drivers_rs::adapters::evt3::Adapter {
+    fn current_t(&self) -> u64 {
+        self.current_t()
+    }
+
     fn consume(&mut self, slice: &[u8]) {
         self.consume(slice);
     }
@@ -55,6 +61,12 @@ impl Adapter for neuromorphic_drivers_rs::adapters::evt3::Adapter {
 }
 
 impl Adapter for neuromorphic_drivers_rs::Adapter {
+    fn current_t(&self) -> u64 {
+        match self {
+            neuromorphic_drivers::Adapter::Evt3(adapter) => adapter.current_t(),
+        }
+    }
+
     fn consume(&mut self, slice: &[u8]) {
         match self {
             neuromorphic_drivers::Adapter::Evt3(adapter) => adapter.consume(slice),

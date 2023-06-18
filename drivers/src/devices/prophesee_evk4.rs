@@ -30,6 +30,12 @@ pub enum Clock {
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct RateLimiter {
+    pub reference_period_us: u16,
+    pub maximum_events_per_period: u32,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 pub struct Configuration {
     pub biases: Biases,
     pub x_mask: [u64; 20],
@@ -37,6 +43,7 @@ pub struct Configuration {
     pub invert_mask: bool,
     pub enable_external_trigger: bool,
     pub clock: Clock,
+    pub rate_limiter: Option<RateLimiter>,
 }
 
 pub struct Device {
@@ -105,6 +112,7 @@ impl device::Usb for Device {
             invert_mask: false,
             enable_external_trigger: true,
             clock: Clock::Internal,
+            rate_limiter: None,
         },
     };
 
@@ -428,18 +436,95 @@ impl device::Usb for Device {
         LifoCtrl { value: 0x00000003 }.write(&handle)?;
         let _ = LifoCtrl::default().read(&handle)?;
         LifoCtrl { value: 0x00000007 }.write(&handle)?;
+
+        // Event Rate Controler (ERC)
+        ErcReserved6000 { value: 0x00155400 }.write(&handle)?;
+        match &configuration.rate_limiter {
+            Some(rate_limiter) => {
+                ErcInDropRateControl {
+                    enable: 1,
+                    reserved_1_32: 0,
+                }
+                .write(&handle)?;
+                ErcReferencePeriod {
+                    duration_us: rate_limiter.reference_period_us as u32,
+                    reserved_10_32: 0,
+                }
+                .write(&handle)?;
+                ErcTdTargetEventRate {
+                    maximum_per_period: rate_limiter.maximum_events_per_period,
+                    reserved_22_32: 0,
+                }
+                .write(&handle)?;
+                ErcControl {
+                    enable: 1,
+                    reserved_1_32: 1,
+                }
+                .write(&handle)?;
+            }
+            None => {
+                ErcInDropRateControl {
+                    enable: 0,
+                    reserved_1_32: 0,
+                }
+                .write(&handle)?;
+                ErcControl {
+                    enable: 0,
+                    reserved_1_32: 1,
+                }
+                .write(&handle)?;
+            }
+        }
+        ErcReserved602C { value: 0x00000001 }.write(&handle)?;
+        for offset in 0..230 {
+            ErcReserved6800 { value: 0x08080808 }
+                .offset(offset)
+                .write(&handle)?;
+        }
+        ErcReserved602C { value: 0x00000002 }.write(&handle)?;
+        for offset in 0..256 {
+            TDropLut {
+                value: ((offset * 2 + 1) << 16) | (offset * 2),
+            }
+            .offset(offset)
+            .write(&handle)?;
+        }
+        TDroppingControl {
+            enable: configuration.rate_limiter.is_some() as u32,
+            reserved_1_32: 0,
+        }
+        .write(&handle)?;
+        HDroppingControl {
+            enable: 0,
+            reserved_1_32: 0,
+        }
+        .write(&handle)?;
+        VDroppingControl {
+            enable: 0,
+            reserved_1_32: 0,
+        }
+        .write(&handle)?;
+        ErcReserved6000 { value: 0x00155401 }.write(&handle)?;
+
+        /*
         let _ = ErcReserved6000::default().read(&handle)?;
         ErcReserved6000 { value: 0x00155400 }.write(&handle)?;
-        let _ = InDropRateControl::default().read(&handle)?;
-        InDropRateControl { value: 0x00000001 }.write(&handle)?;
-        let _ = ReferencePeriod::default().read(&handle)?;
-        ReferencePeriod { value: 0x000000c8 }.write(&handle)?;
-        let _ = TdTargetEventRate::default().read(&handle)?;
-        TdTargetEventRate { value: 0x00000fa0 }.write(&handle)?;
-        let _ = ErcEnable::default().read(&handle)?;
-        ErcEnable { value: 0x00000003 }.write(&handle)?;
-
-        // erc
+        let _ = ErcInDropRateControl::default().read(&handle)?;
+        ErcInDropRateControl {
+            enable: 1,
+            reserved_1_32: 0,
+        }
+        .write(&handle)?;
+        let _ = ErcReferencePeriod::default().read(&handle)?;
+        ErcReferencePeriod { value: 0x000000c8 }.write(&handle)?;
+        let _ = ErcTdTargetEventRate::default().read(&handle)?;
+        ErcTdTargetEventRate {
+            per_period: 4000,
+            reserved_22_32: 0,
+        }
+        .write(&handle)?;
+        let _ = ErcControl::default().read(&handle)?;
+        ErcControl { value: 0x00000003 }.write(&handle)?;
         let _ = ErcReserved602C::default().read(&handle)?;
         ErcReserved602C { value: 0x00000001 }.write(&handle)?;
         for offset in 0..230 {
@@ -449,27 +534,8 @@ impl device::Usb for Device {
         }
         let _ = ErcReserved602C::default().read(&handle)?;
         ErcReserved602C { value: 0x00000002 }.write(&handle)?;
+         */
 
-        // t_drop_lut
-        for offset in 0..256 {
-            let register = TDropLut {
-                value: ((offset * 2 + 1) << 16) | (offset * 2),
-            };
-            let _ = register.read(&handle)?;
-            register.write(&handle)?;
-        }
-
-        let _ = TDroppingControl::default().read(&handle)?;
-        TDroppingControl { value: 0x00000000 }.write(&handle)?;
-        let _ = HDroppingControl::default().read(&handle)?;
-        HDroppingControl { value: 0x00000000 }.write(&handle)?;
-        let _ = VDroppingControl::default().read(&handle)?;
-        VDroppingControl { value: 0x00000000 }.write(&handle)?;
-        let _ = ErcReserved6000::default().read(&handle)?;
-        ErcReserved6000 { value: 0x00155401 }.write(&handle)?;
-        let _ = TDroppingControl::default().read(&handle)?;
-        TDroppingControl { value: 0x00000000 }.write(&handle)?;
-        TdTargetEventRate { value: 0x00000fa0 }.write(&handle)?;
         let _ = EdfReserved7004::default().read(&handle)?;
         EdfReserved7004 {
             reserved_0_10: 0b0111111111,
@@ -501,8 +567,8 @@ impl device::Usb for Device {
             TIMEOUT,
         )?;
         update_configuration(&handle, None, &configuration)?;
-        let _ = ReferencePeriod::default().read(&handle)?;
-        let _ = TdTargetEventRate::default().read(&handle)?;
+        let _ = ErcReferencePeriod::default().read(&handle)?;
+        let _ = ErcTdTargetEventRate::default().read(&handle)?;
         let _ = ErcReserved6000::default().read(&handle)?;
         let _ = ErcReserved6000::default().read(&handle)?;
         let _ = TDroppingControl::default().read(&handle)?;
@@ -1231,14 +1297,35 @@ register! { Unknown1104, 0x1104, { value: 0..32 } }
 register! { TdRoiX, 0x2000, { value: 0..32 } }
 register! { TdRoiY, 0x4000, { value: 0..32 } }
 register! { ErcReserved6000, 0x6000, { value: 0..32 } }
-register! { InDropRateControl, 0x6004, { value: 0..32 } }
-register! { ReferencePeriod, 0x6008, { value: 0..32 } }
-register! { TdTargetEventRate, 0x600C, { value: 0..32 } }
-register! { ErcEnable, 0x6028, { value: 0..32 } }
+register! { ErcInDropRateControl, 0x6004, {
+    enable: 0..1,
+    reserved_1_32: 1..32,
+} }
+register! { ErcReferencePeriod, 0x6008, {
+    duration_us: 0..10,
+    reserved_10_32: 10..32,
+} }
+register! { ErcTdTargetEventRate, 0x600C, {
+    maximum_per_period: 0..22,
+    reserved_22_32: 22..32,
+} }
+register! { ErcControl, 0x6028, {
+    enable: 0..1,
+    reserved_1_32: 1..32,
+} }
 register! { ErcReserved602C, 0x602C, { value: 0..32 } }
-register! { TDroppingControl, 0x6050, { value: 0..32 } }
-register! { HDroppingControl, 0x6060, { value: 0..32 } }
-register! { VDroppingControl, 0x6070, { value: 0..32 } }
+register! { TDroppingControl, 0x6050, {
+    enable: 0..1,
+    reserved_1_32: 1..32,
+} }
+register! { HDroppingControl, 0x6060, {
+    enable: 0..1,
+    reserved_1_32: 1..32,
+} }
+register! { VDroppingControl, 0x6070, {
+    enable: 0..1,
+    reserved_1_32: 1..32,
+} }
 register! { TDropLut, 0x6400, { value: 0..32 } }
 register! { ErcReserved6800, 0x6800, { value: 0..32 } }
 register! { EdfPipelineControl, 0x7000, { value: 0..32 } }

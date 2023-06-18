@@ -1,4 +1,5 @@
 import threading
+import time
 import typing
 
 import neuromorphic_drivers
@@ -50,6 +51,7 @@ void main() {{
 
 class Canvas(vispy.app.Canvas):
     def __init__(self, sensor_width: int, sensor_height: int):
+        self.program = None
         vispy.app.Canvas.__init__(
             self,
             keys="interactive",
@@ -58,21 +60,21 @@ class Canvas(vispy.app.Canvas):
         self.sensor_width = sensor_width
         self.sensor_height = sensor_height
         self.program = vispy.gloo.Program(VERTEX_SHADER, FRAGMENT_SHADER)
-        self.projection = vispy.util.transforms.ortho(
-            0, sensor_width, 0, sensor_height, -1, 1
-        )
-        self.program["u_projection"] = self.projection
         self.ts_and_ons = numpy.zeros(
             (self.sensor_width, self.sensor_height),
             dtype=numpy.float32,
         )
-        self.t = 0
+        self.current_t = 0
         self.offset_t = 0
         self.texture = vispy.gloo.texture.Texture2D(
             data=self.ts_and_ons,
             format="luminance",
             internalformat="r32f",
         )
+        self.projection = vispy.util.transforms.ortho(
+            0, sensor_width, 0, sensor_height, -1, 1
+        )
+        self.program["u_projection"] = self.projection
         self.program["u_texture"] = self.texture
         self.program["u_t"] = 0
         self.program["u_tau"] = 200000
@@ -90,7 +92,6 @@ class Canvas(vispy.app.Canvas):
         )
         self.coordinates["a_texcoord"] = numpy.array([[0, 0], [0, 1], [1, 0], [1, 1]])
         self.program.bind(vispy.gloo.VertexBuffer(self.coordinates))
-
         self.projection = vispy.util.transforms.ortho(
             0,
             self.sensor_width,
@@ -100,37 +101,51 @@ class Canvas(vispy.app.Canvas):
             1,
         )
         vispy.gloo.set_clear_color("#292929")
-        self._timer = vispy.app.Timer("auto", connect=self.update, start=True)
         self.show()
 
+    def trigger_draw(self):
+        super().update()
+
     def on_resize(self, event):
-        width, height = event.physical_size
-        vispy.gloo.set_viewport(0, 0, width, height)
-        self.projection = vispy.util.transforms.ortho(0, width, 0, height, -100, 100)
-        self.program["u_projection"] = self.projection
-        ratio = width / float(height)
-        sensor_ratio = self.sensor_width / float(self.sensor_height)
-        if ratio < sensor_ratio:
-            w, h = width, width / sensor_ratio
-            x, y = 0, int((height - h) / 2)
-        else:
-            w, h = height * sensor_ratio, height
-            x, y = int((width - w) / 2), 0
-        self.coordinates["a_position"] = numpy.array(
-            [[x, y], [x + w, y], [x, y + h], [x + w, y + h]]
-        )
-        self.program.bind(vispy.gloo.VertexBuffer(self.coordinates))
+        if self.program is not None:
+            width, height = event.physical_size
+            vispy.gloo.set_viewport(0, 0, width, height)
+            self.projection = vispy.util.transforms.ortho(
+                0, width, 0, height, -100, 100
+            )
+            self.program["u_projection"] = self.projection
+            ratio = width / float(height)
+            sensor_ratio = self.sensor_width / float(self.sensor_height)
+            if ratio < sensor_ratio:
+                w, h = width, width / sensor_ratio
+                x, y = 0, int((height - h) / 2)
+            else:
+                w, h = height * sensor_ratio, height
+                x, y = int((width - w) / 2), 0
+            self.coordinates["a_position"] = numpy.array(
+                [[x, y], [x + w, y], [x, y + h], [x + w, y + h]]
+            )
+            self.program.bind(vispy.gloo.VertexBuffer(self.coordinates))
 
     def on_draw(self, event):
+        assert self.program is not None
         vispy.gloo.clear(color=True, depth=True)
+        self.program["u_t"] = numpy.float32(self.current_t)
         self.texture.set_data(self.ts_and_ons)
         self.program.draw("triangle_strip")
 
-    def push(self, dvs_events: numpy.ndarray[typing.Any, numpy.dtype[numpy.void]]):
+    def push(
+        self,
+        dvs_events: numpy.ndarray[typing.Any, numpy.dtype[numpy.void]],
+        current_t: int,
+    ):
+        self.current_t = current_t
         self.ts_and_ons[dvs_events["x"], dvs_events["y"]] = dvs_events["t"].astype(
             numpy.float32
         ) * (dvs_events["on"].astype(numpy.float32) * 2.0 - 1.0)
-        self.program["u_t"] = dvs_events["t"].astype(numpy.float32)[-1]
+
+    def update_t(self, current_t: int):
+        self.current_t = current_t
 
 
 if __name__ == "__main__":
@@ -139,32 +154,56 @@ if __name__ == "__main__":
     with neuromorphic_drivers.open(
         configuration=neuromorphic_drivers.prophesee_evk4.Configuration(
             biases=neuromorphic_drivers.prophesee_evk4.Biases(
-                diff_on=120,
-                diff_off=120,
+                diff_on=150,
+                diff_off=150,
+            ),
+            rate_limiter=neuromorphic_drivers.prophesee_evk4.RateLimiter(
+                reference_period_us=200,
+                maximum_events_per_period=4000,
             ),
         ),
-        iterator_timeout=0.016,
+        iterator_timeout=1.0 / 60.0,
     ) as device:
         print(device.serial(), device.properties())
         canvas = Canvas(
             sensor_width=int(device.properties().width),
             sensor_height=int(device.properties().height),
         )
-        camera_thread_context = {"running": True}
+        thread_context = {"running": True}
+
+        def canvas_worker():
+            next_frame = time.monotonic()
+            while thread_context["running"]:
+                delta = next_frame - time.monotonic()
+                if delta > 0:
+                    time.sleep(delta)
+                canvas.trigger_draw()
+                next_frame += 1.0 / 60.0
 
         def camera_worker():
             for status, packet in device:
-                if not camera_thread_context["running"]:
+                if not thread_context["running"]:
                     break
                 if packet is not None:
                     if "dvs_events" in packet:
-                        canvas.push(packet["dvs_events"])
+                        assert (
+                            status.packet is not None
+                            and status.packet.current_t is not None
+                        )
+                        canvas.push(packet["dvs_events"], status.packet.current_t)
+                    elif (
+                        status.packet is not None
+                        and status.packet.current_t is not None
+                    ):
+                        canvas.update_t(status.packet.current_t)
                     if status.packet is not None and status.packet.backlog() > 1000:
                         device.clear_backlog(until=0)
 
+        canvas_thread = threading.Thread(target=canvas_worker)
+        canvas_thread.start()
         camera_thread = threading.Thread(target=camera_worker)
         camera_thread.start()
         vispy.app.run()
-        camera_thread_context["running"] = False
-        if camera_thread is not None:
-            camera_thread.join()
+        thread_context["running"] = False
+        camera_thread.join()
+        canvas_thread.join()

@@ -8,6 +8,8 @@ class PacketStatus:
     read: int
     write_range: tuple[int, int]
     ring_length: int
+    # current_t is None if the mode is raw
+    current_t: typing.Optional[int]
 
     def backlog(self):
         return (
@@ -18,6 +20,8 @@ class PacketStatus:
 @dataclasses.dataclass
 class Status:
     system_time: float
+    # packet is None if no data became available before iterator_timeout
+    # packet may only be None if iterator_timeout is not None
     packet: typing.Optional[PacketStatus]
 
     def delay(self) -> typing.Optional[float]:
