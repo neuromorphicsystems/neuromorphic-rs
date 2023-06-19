@@ -8,7 +8,11 @@ import vispy.app
 import vispy.gloo
 import vispy.util.transforms
 
-VERTEX_SHADER = """
+FRAME_DURATION: float = 1.0 / 60.0
+ON_COLORMAP: list[str] = ["#F4C20D", "#191919"]
+OFF_COLORMAP: list[str] = ["#1E88E5", "#191919"]
+
+VERTEX_SHADER: str = """
 uniform mat4 u_projection;
 attribute vec2 a_position;
 attribute vec2 a_texcoord;
@@ -19,15 +23,12 @@ void main (void) {
 }
 """
 
-ON_COLORMAP = ["#F4C20D", "#191919"]
-OFF_COLORMAP = ["#1E88E5", "#191919"]
-
 
 def color_to_vec4(color: str) -> str:
     return f"vec4({int(color[1:3], 16) / 255.0}, {int(color[3:5], 16) / 255.0}, {int(color[5:7], 16) / 255.0}, 1.0)"
 
 
-FRAGMENT_SHADER = f"""
+FRAGMENT_SHADER: str = f"""
 uniform sampler2D u_texture;
 uniform float u_t;
 uniform float u_tau;
@@ -101,7 +102,7 @@ class Canvas(vispy.app.Canvas):
             1,
         )
         vispy.gloo.set_clear_color("#292929")
-        self.timer = vispy.app.Timer("auto", connect=self.update, start=True)
+        self.timer = vispy.app.Timer(FRAME_DURATION, connect=self.update, start=True)
         self.show()
 
     def on_resize(self, event):
@@ -149,19 +150,7 @@ class Canvas(vispy.app.Canvas):
 if __name__ == "__main__":
     neuromorphic_drivers.print_device_list()
     camera_thread: typing.Optional[threading.Thread] = None
-    with neuromorphic_drivers.open(
-        configuration=neuromorphic_drivers.prophesee_evk4.Configuration(
-            biases=neuromorphic_drivers.prophesee_evk4.Biases(
-                diff_on=150,
-                diff_off=150,
-            ),
-            rate_limiter=neuromorphic_drivers.prophesee_evk4.RateLimiter(
-                reference_period_us=200,
-                maximum_events_per_period=4000,
-            ),
-        ),
-        iterator_timeout=1.0 / 60.0,
-    ) as device:
+    with neuromorphic_drivers.open(iterator_timeout=FRAME_DURATION) as device:
         print(device.serial(), device.properties())
         canvas = Canvas(
             sensor_width=int(device.properties().width),

@@ -51,7 +51,7 @@ impl From<rusb::Speed> for Speed {
             rusb::Speed::High => Self::High,
             rusb::Speed::Super => Self::Super,
             rusb::Speed::SuperPlus => Self::SuperPlus,
-            rusb::Speed::Unknown | _ => Self::Unknown,
+            _ => Self::Unknown,
         }
     }
 }
@@ -489,18 +489,13 @@ impl Ring {
                 }) {
                     Some(transfer) => LibusbTransfer(transfer),
                     None => {
-                        for other_index in 0..index {
+                        for transfer in transfers.iter_mut().take(index) {
                             // unsafe: transfer is allocated and user_data is an allocated *mut TransferContext
                             unsafe {
-                                Box::from_raw(
-                                    (transfers[other_index].as_mut()).user_data
-                                        as *mut TransferContext,
-                                )
+                                Box::from_raw((transfer.as_mut()).user_data as *mut TransferContext)
                             };
                             // unsafe: transfer is allocated
-                            unsafe {
-                                libusb1_sys::libusb_free_transfer(transfers[other_index].as_ptr())
-                            };
+                            unsafe { libusb1_sys::libusb_free_transfer(transfer.as_ptr()) };
                         }
                         return Err(rusb::Error::NoMem.into());
                     }
@@ -759,7 +754,7 @@ impl Drop for Ring {
                                 )
                             };
                             // unsafe: transfer is allocated
-                            let _ = unsafe {
+                            unsafe {
                                 libusb1_sys::libusb_free_transfer(self.transfers[index].as_ptr())
                             };
                             shared.transfer_statuses[index] = TransferStatus::Deallocated;

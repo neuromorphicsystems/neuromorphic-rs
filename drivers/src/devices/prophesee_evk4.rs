@@ -841,7 +841,7 @@ fn update_configuration(
                 },
             }
             .offset(offset);
-            register.write(&handle)?;
+            register.write(handle)?;
         }
         for offset in 0..((configuration.y_mask.len() as u32) * 2 - 1) {
             let register = TdRoiY {
@@ -875,7 +875,7 @@ fn update_configuration(
                 },
             }
             .offset(offset);
-            register.write(&handle)?;
+            register.write(handle)?;
         }
         RoiCtrl {
             reserved_0_1: 0,
@@ -887,7 +887,7 @@ fn update_configuration(
             td_rstn: previous_configuration.is_some() as u32,
             reserved_11_32: 0x1e000a,
         }
-        .write(&handle)?;
+        .write(handle)?;
     }
     Ok(())
 }

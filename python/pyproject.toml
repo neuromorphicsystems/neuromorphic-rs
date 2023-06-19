@@ -34,3 +34,6 @@ executionEnvironments = [
 
 [tool.isort]
 profile = "black"
+
+[project.scripts]
+neuromorphic-drivers-install-udev-rules = "neuromorphic_drivers:install_udev_rules"

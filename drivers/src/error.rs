@@ -24,3 +24,12 @@ where
         self.0.lock().unwrap().clone()
     }
 }
+
+impl<IntoError> Default for Flag<IntoError>
+where
+    IntoError: Clone + Send,
+{
+    fn default() -> Self {
+        Self::new()
+    }
+}

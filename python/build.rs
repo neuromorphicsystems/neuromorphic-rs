@@ -7,7 +7,7 @@ fn quote_type(
 ) -> String {
     match format {
         reflect::Format::TypeName(name) => {
-            name_to_new_name.get(name).unwrap_or_else(|| &name).clone()
+            name_to_new_name.get(name).unwrap_or(&name).clone()
         }
         reflect::Format::Unit => "serde.type.unit".into(),
         reflect::Format::Bool => "bool".into(),

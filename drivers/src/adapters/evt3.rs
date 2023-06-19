@@ -174,12 +174,10 @@ impl Adapter {
                                 self.previous_lsb_t = 0;
                                 self.previous_msb_t = msb_t;
                             }
-                        } else {
-                            if (self.previous_msb_t - msb_t) > (1 << 11) {
-                                self.overflows += 1;
-                                self.previous_lsb_t = 0;
-                                self.previous_msb_t = msb_t;
-                            }
+                        } else if (self.previous_msb_t - msb_t) > (1 << 11) {
+                            self.overflows += 1;
+                            self.previous_lsb_t = 0;
+                            self.previous_msb_t = msb_t;
                         }
                         let t = (((self.previous_lsb_t as u32)
                             | ((self.previous_msb_t as u32) << 12))
@@ -231,12 +229,10 @@ impl Adapter {
                                 self.previous_lsb_t = 0;
                                 self.previous_msb_t = msb_t;
                             }
-                        } else {
-                            if (self.previous_msb_t - msb_t) > (1 << 11) {
-                                self.overflows += 1;
-                                self.previous_lsb_t = 0;
-                                self.previous_msb_t = msb_t;
-                            }
+                        } else if (self.previous_msb_t - msb_t) > (1 << 11) {
+                            self.overflows += 1;
+                            self.previous_lsb_t = 0;
+                            self.previous_msb_t = msb_t;
                         }
                         let t = (((self.previous_lsb_t as u32)
                             | ((self.previous_msb_t as u32) << 12))
