@@ -7,7 +7,7 @@ fn quote_type(
 ) -> String {
     match format {
         reflect::Format::TypeName(name) => {
-            name_to_new_name.get(name).unwrap_or(&name).clone()
+            name_to_new_name.get(name).unwrap_or(name).clone()
         }
         reflect::Format::Unit => "serde.type.unit".into(),
         reflect::Format::Bool => "bool".into(),
@@ -85,7 +85,7 @@ fn value_to_string(value: &reflect::Value) -> String {
         reflect::Value::F32(value) => value.to_string(),
         reflect::Value::F64(value) => value.to_string(),
         reflect::Value::Char(value) => value.to_string(),
-        reflect::Value::Str(value) => format!("\"{}\"", value.replace("\"", "\\\"")),
+        reflect::Value::Str(value) => format!("\"{}\"", value.replace('"', "\\\"")),
         reflect::Value::Bytes(value) => format!(
             "[{}]",
             value
@@ -96,12 +96,12 @@ fn value_to_string(value: &reflect::Value) -> String {
         ),
         reflect::Value::Option(value) => value
             .as_ref()
-            .map_or_else(|| "None".to_owned(), |value| value_to_string(&value)),
-        reflect::Value::Variant(_, value) => value_to_string(&value),
+            .map_or_else(|| "None".to_owned(), |value| value_to_string(value)),
+        reflect::Value::Variant(_, value) => value_to_string(value),
         reflect::Value::Seq(value) => format!(
             "({})",
             value
-                .into_iter()
+                .iter()
                 .map(value_to_string)
                 .collect::<Vec<String>>()
                 .join(", ")
@@ -171,7 +171,7 @@ fn generate_dataclasses<Writer: std::io::Write, Structure>(
     let registry = tracer.registry().unwrap();
     let mut nodes: Vec<Node> = Vec::new();
     for (name, format) in registry.iter() {
-        if nodes.iter().find(|node| node.name == *name).is_some() {
+        if nodes.iter().any(|node| node.name == *name) {
             panic!("multiple nodes have the same name \"{}\"", name);
         }
         let mut class = match format {
@@ -201,25 +201,22 @@ fn generate_dataclasses<Writer: std::io::Write, Structure>(
                 id_to_field: id_to_field.clone(),
             },
         };
-        match &mut class {
-            NodeClass::Dataclass { children, fields } => {
-                for field in fields.iter() {
-                    if !parameters.skip_fields.contains(&field.name) {
-                        match &field.value {
-                            reflect::Format::Option(format) => {
-                                if let reflect::Format::TypeName(name) = format.as_ref() {
-                                    children.insert(name.to_owned());
-                                }
-                            }
-                            reflect::Format::TypeName(name) => {
+        if let NodeClass::Dataclass { children, fields } = &mut class {
+            for field in fields.iter() {
+                if !parameters.skip_fields.contains(&field.name) {
+                    match &field.value {
+                        reflect::Format::Option(format) => {
+                            if let reflect::Format::TypeName(name) = format.as_ref() {
                                 children.insert(name.to_owned());
                             }
-                            _ => (),
                         }
+                        reflect::Format::TypeName(name) => {
+                            children.insert(name.to_owned());
+                        }
+                        _ => (),
                     }
                 }
             }
-            _ => (),
         }
         nodes.push(Node {
             name: name.clone(),
@@ -238,19 +235,16 @@ fn generate_dataclasses<Writer: std::io::Write, Structure>(
                     .find(|node| node.name == node_name)
                     .unwrap();
                 node.required = true;
-                match &node.class {
-                    NodeClass::Dataclass {
-                        children,
-                        fields: _,
-                    } => {
-                        new_nodes_names_to_update.extend(
-                            children
-                                .iter()
-                                .filter(|child| !nodes_names_updated.contains(*child))
-                                .map(|child| child.clone()),
-                        );
-                    }
-                    _ => (),
+                if let NodeClass::Dataclass {
+                    children,
+                    fields: _,
+                } = &node.class {
+                    new_nodes_names_to_update.extend(
+                        children
+                            .iter()
+                            .filter(|child| !nodes_names_updated.contains(*child))
+                            .cloned(),
+                    );
                 }
                 nodes_names_updated.insert(node.name.clone());
             }
@@ -289,7 +283,7 @@ fn generate_dataclasses<Writer: std::io::Write, Structure>(
                     let name = parameters
                         .name_to_new_name
                         .get(&node.name)
-                        .unwrap_or_else(|| &node.name)
+                        .unwrap_or(&node.name)
                         .clone();
                     match &node.class {
                         NodeClass::Dataclass {

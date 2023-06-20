@@ -123,7 +123,7 @@ where
     pub fn set(&mut self, index: usize, event: Event) {
         unsafe {
             self.pointer
-                .offset((index * core::mem::size_of::<Event>()) as isize)
+                .add(index * core::mem::size_of::<Event>())
                 .copy_from(
                     (&event as *const Event) as *const u8,
                     core::mem::size_of::<Event>(),

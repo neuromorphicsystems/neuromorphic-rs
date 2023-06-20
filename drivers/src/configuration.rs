@@ -18,8 +18,7 @@ impl<Configuration: Clone + Send + 'static> Updater<Configuration> {
     ) -> Self
     where
         ContextType: Send + 'static,
-        Update:
-            Fn(ContextType, &Configuration, &Configuration) -> ContextType + Send + 'static,
+        Update: Fn(ContextType, &Configuration, &Configuration) -> ContextType + Send + 'static,
     {
         let previous_configuration = initial_configuration.clone();
         let flagged_configuration_and_condition = std::sync::Arc::new((

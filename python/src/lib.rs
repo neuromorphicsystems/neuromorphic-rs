@@ -6,8 +6,10 @@ use std::ops::DerefMut;
 use adapters::Adapter;
 use pyo3::IntoPy;
 
+type ListedDevice = (String, String, Option<String>, Option<String>);
+
 #[pyo3::pyfunction]
-fn list_devices() -> pyo3::PyResult<Vec<(String, String, Option<String>, Option<String>)>> {
+fn list_devices() -> pyo3::PyResult<Vec<ListedDevice>> {
     Ok(neuromorphic_drivers_rs::list_devices()
         .map_err(|error| pyo3::exceptions::PyRuntimeError::new_err(format!("{error}")))?
         .into_iter()
@@ -137,7 +139,7 @@ impl Device {
         python: pyo3::Python,
     ) -> pyo3::PyResult<Option<pyo3::PyObject>> {
         let error_flag = slf.error_flag.clone();
-        let iterator_timeout = slf.iterator_timeout.clone();
+        let iterator_timeout = slf.iterator_timeout;
         let mut device_reference = slf
             .device
             .as_ref()
@@ -159,10 +161,9 @@ impl Device {
             })?),
             None => None,
         };
-        let mut adapter = match &mut adapter_reference {
-            Some(adapter) => Some(AdapterReference(adapter.deref_mut())),
-            None => None,
-        };
+        let mut adapter = adapter_reference
+            .as_mut()
+            .map(|adapter| AdapterReference(adapter.deref_mut()));
         python.allow_threads(|| match iterator_timeout {
             Some(iterator_timeout) => {
                 if let Some(error) = error_flag.load() {
@@ -236,7 +237,7 @@ impl Device {
                             .into_py(python)),
                     }),
                 })
-                .map(|object| Some(object))
+                .map(Some)
             }
             None => loop {
                 if let Some(error) = error_flag.load() {
@@ -288,7 +289,7 @@ impl Device {
                         )
                             .into_py(python)),
                     })
-                    .map(|object| Some(object));
+                    .map(Some);
                 }
             },
         })
@@ -321,10 +322,9 @@ impl Device {
             })?),
             None => None,
         };
-        let mut adapter = match &mut adapter_reference {
-            Some(adapter) => Some(AdapterReference(adapter.deref_mut())),
-            None => None,
-        };
+        let mut adapter = adapter_reference
+            .as_mut()
+            .map(|adapter| AdapterReference(adapter.deref_mut()));
         python.allow_threads(|| loop {
             if let Some(error) = error_flag.load() {
                 return Err(pyo3::exceptions::PyRuntimeError::new_err(format!(

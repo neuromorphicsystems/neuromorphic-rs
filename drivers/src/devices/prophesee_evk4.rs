@@ -40,7 +40,7 @@ pub struct Configuration {
     pub biases: Biases,
     pub x_mask: [u64; 20],
     pub y_mask: [u64; 12],
-    pub invert_mask: bool,
+    pub mask_intersection_only: bool,
     pub enable_external_trigger: bool,
     pub clock: Clock,
     pub rate_limiter: Option<RateLimiter>,
@@ -109,7 +109,7 @@ impl device::Usb for Device {
             },
             x_mask: [0; 20],
             y_mask: [0; 12],
-            invert_mask: false,
+            mask_intersection_only: false,
             enable_external_trigger: true,
             clock: Clock::Internal,
             rate_limiter: None,
@@ -475,17 +475,17 @@ impl device::Usb for Device {
             .offset(offset)
             .write(&handle)?;
         }
-        TDroppingControl {
+        ErcTDroppingControl {
             enable: configuration.rate_limiter.is_some() as u32,
             reserved_1_32: 0,
         }
         .write(&handle)?;
-        HDroppingControl {
+        ErcHDroppingControl {
             enable: 0,
             reserved_1_32: 0,
         }
         .write(&handle)?;
-        VDroppingControl {
+        ErcVDroppingControl {
             enable: 0,
             reserved_1_32: 0,
         }
@@ -584,7 +584,7 @@ impl device::Usb for Device {
             td_enable: 1,
             reserved_2_5: 0,
             td_shadow_trigger: 0,
-            td_roni_n_en: (!configuration.invert_mask) as u32,
+            td_roni_n_en: (!configuration.mask_intersection_only) as u32,
             reserved_7_10: 0,
             td_rstn: 1,
             reserved_11_32: 0x1e000a,
@@ -827,7 +827,7 @@ fn update_configuration(
         Some(previous_configuration) => {
             previous_configuration.x_mask != configuration.x_mask
                 || previous_configuration.y_mask != configuration.y_mask
-                || previous_configuration.invert_mask != configuration.invert_mask
+                || previous_configuration.mask_intersection_only != configuration.mask_intersection_only
         }
         None => true,
     } {
@@ -860,7 +860,7 @@ fn update_configuration(
                             byte0.reverse_bits(),
                         ])
                     } else {
-                        u32::from_le_bytes([byte3, byte2, 0xff, 0x00])
+                        u32::from_le_bytes([byte3.reverse_bits(), byte2.reverse_bits(), 0xff, 0x00])
                     }
                 } else {
                     let [_, _, byte0, byte1, byte2, byte3, _, _] = configuration.y_mask
@@ -882,7 +882,7 @@ fn update_configuration(
             td_enable: 1,
             reserved_2_5: 0,
             td_shadow_trigger: 1,
-            td_roni_n_en: configuration.invert_mask as u32,
+            td_roni_n_en: (!configuration.mask_intersection_only) as u32,
             reserved_7_10: 0,
             td_rstn: previous_configuration.is_some() as u32,
             reserved_11_32: 0x1e000a,
@@ -936,7 +936,7 @@ trait Register {
             0x00,
             0x00,
         ];
-        let result = request(handle, &buffer, std::time::Duration::from_millis(1000))?;
+        let result = request(handle, &buffer, TIMEOUT)?;
         if result.len() != buffer.len() {
             return Err(Error::RegisterReadShortResponse(address));
         }
@@ -974,7 +974,7 @@ trait Register {
                 ((value >> 16) & 0xff) as u8,
                 ((value >> 24) & 0xff) as u8,
             ],
-            std::time::Duration::from_millis(1000),
+            TIMEOUT,
         )?;
         Ok(())
     }
@@ -1257,15 +1257,15 @@ register! { ErcControl, 0x6028, {
     reserved_1_32: 1..32,
 } }
 register! { ErcReserved602C, 0x602C, { value: 0..32 } }
-register! { TDroppingControl, 0x6050, {
+register! { ErcTDroppingControl, 0x6050, {
     enable: 0..1,
     reserved_1_32: 1..32,
 } }
-register! { HDroppingControl, 0x6060, {
+register! { ErcHDroppingControl, 0x6060, {
     enable: 0..1,
     reserved_1_32: 1..32,
 } }
-register! { VDroppingControl, 0x6070, {
+register! { ErcVDroppingControl, 0x6070, {
     enable: 0..1,
     reserved_1_32: 1..32,
 } }

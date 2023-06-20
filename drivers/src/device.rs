@@ -82,8 +82,7 @@ pub trait Usb: Sized {
                             };
                             match serial {
                                 Some(serial) => {
-                                    let device_serial = match Self::read_serial(&mut handle)
-                                    {
+                                    let device_serial = match Self::read_serial(&mut handle) {
                                         Ok(serial) => serial,
                                         Err(_) => return None, // ignore errors to support devices that are already open
                                     };
@@ -95,8 +94,7 @@ pub trait Usb: Sized {
                                     }
                                 }
                                 None => {
-                                    let device_serial = match Self::read_serial(&mut handle)
-                                    {
+                                    let device_serial = match Self::read_serial(&mut handle) {
                                         Ok(serial) => serial,
                                         Err(_) => return None, // ignore errors to support devices that are already open
                                     };
