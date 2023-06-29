@@ -153,7 +153,6 @@ impl device::Usb for Device {
         IntoError: From<Self::Error> + Clone + Send + 'static,
     {
         let (handle, serial) = Self::handle_from_serial(event_loop.context(), serial)?;
-        println!("serial={}, clock={:?}", serial, configuration.clock); // @DEV
         usb::assert_control_transfer(
             &handle,
             0x80,
@@ -605,7 +604,7 @@ impl device::Usb for Device {
                 event_loop,
                 usb::TransferType::Bulk {
                     endpoint: 1 | libusb1_sys::constants::LIBUSB_ENDPOINT_IN,
-                    timeout: std::time::Duration::from_millis(100),
+                    timeout: std::time::Duration::default(),
                 },
             )?,
             configuration_updater: configuration::Updater::new(

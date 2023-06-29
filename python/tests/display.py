@@ -1,12 +1,13 @@
 import threading
-import time
 import typing
 
-import neuromorphic_drivers
-import numpy
+import neuromorphic_drivers as nd
+import numpy as np
 import vispy.app
 import vispy.gloo
 import vispy.util.transforms
+
+vispy.app.use_app(backend_name="glfw")
 
 FRAME_DURATION: float = 1.0 / 60.0
 ON_COLORMAP: list[str] = ["#F4C20D", "#191919"]
@@ -61,9 +62,9 @@ class Canvas(vispy.app.Canvas):
         self.sensor_width = sensor_width
         self.sensor_height = sensor_height
         self.program = vispy.gloo.Program(VERTEX_SHADER, FRAGMENT_SHADER)
-        self.ts_and_ons = numpy.zeros(
+        self.ts_and_ons = np.zeros(
             (self.sensor_width, self.sensor_height),
-            dtype=numpy.float32,
+            dtype=np.float32,
         )
         self.current_t = 0
         self.offset_t = 0
@@ -79,11 +80,11 @@ class Canvas(vispy.app.Canvas):
         self.program["u_texture"] = self.texture
         self.program["u_t"] = 0
         self.program["u_tau"] = 200000
-        self.coordinates = numpy.zeros(
+        self.coordinates = np.zeros(
             4,
-            dtype=[("a_position", numpy.float32, 2), ("a_texcoord", numpy.float32, 2)],
+            dtype=[("a_position", np.float32, 2), ("a_texcoord", np.float32, 2)],
         )
-        self.coordinates["a_position"] = numpy.array(
+        self.coordinates["a_position"] = np.array(
             [
                 [0, 0],
                 [sensor_width, 0],
@@ -91,7 +92,7 @@ class Canvas(vispy.app.Canvas):
                 [sensor_width, sensor_height],
             ]
         )
-        self.coordinates["a_texcoord"] = numpy.array([[0, 0], [0, 1], [1, 0], [1, 1]])
+        self.coordinates["a_texcoord"] = np.array([[0, 0], [0, 1], [1, 0], [1, 1]])
         self.program.bind(vispy.gloo.VertexBuffer(self.coordinates))
         self.projection = vispy.util.transforms.ortho(
             0,
@@ -121,7 +122,7 @@ class Canvas(vispy.app.Canvas):
             else:
                 w, h = height * sensor_ratio, height
                 x, y = int((width - w) / 2), 0
-            self.coordinates["a_position"] = numpy.array(
+            self.coordinates["a_position"] = np.array(
                 [[x, y], [x + w, y], [x, y + h], [x + w, y + h]]
             )
             self.program.bind(vispy.gloo.VertexBuffer(self.coordinates))
@@ -129,29 +130,28 @@ class Canvas(vispy.app.Canvas):
     def on_draw(self, event):
         assert self.program is not None
         vispy.gloo.clear(color=True, depth=True)
-        self.program["u_t"] = numpy.float32(self.current_t)
+        self.program["u_t"] = np.float32(self.current_t)
         self.texture.set_data(self.ts_and_ons)
         self.program.draw("triangle_strip")
 
     def push(
         self,
-        dvs_events: numpy.ndarray[typing.Any, numpy.dtype[numpy.void]],
+        dvs_events: np.ndarray[typing.Any, np.dtype[np.void]],
         current_t: int,
     ):
         self.current_t = current_t
-        print(current_t, dvs_events["t"][-1], current_t - dvs_events["t"][-1])    
         self.ts_and_ons[dvs_events["x"], dvs_events["y"]] = dvs_events["t"].astype(
-            numpy.float32
-        ) * (dvs_events["on"].astype(numpy.float32) * 2.0 - 1.0)
+            np.float32
+        ) * (dvs_events["on"].astype(np.float32) * 2.0 - 1.0)
 
     def update_t(self, current_t: int):
         self.current_t = current_t
 
 
 if __name__ == "__main__":
-    neuromorphic_drivers.print_device_list()
+    nd.print_device_list()
     camera_thread: typing.Optional[threading.Thread] = None
-    with neuromorphic_drivers.open() as device:
+    with nd.open() as device:
         print(device.serial(), device.properties())
         canvas = Canvas(
             sensor_width=int(device.properties().width),
