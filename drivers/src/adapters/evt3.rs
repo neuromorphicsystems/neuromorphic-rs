@@ -73,8 +73,7 @@ impl Adapter {
     }
 
     pub fn current_t(&self) -> u64 {
-        (((self.previous_lsb_t as u32) | ((self.previous_msb_t as u32) << 12)) as u64)
-            | ((self.overflows as u64) << 24)
+        self.t
     }
 
     pub fn convert<HandleDvsEvent, HandleTriggerEvent>(

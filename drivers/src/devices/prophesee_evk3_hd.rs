@@ -406,7 +406,7 @@ impl Drop for Device {
         let _ = UnknownB000 { value: 0x000002D8 }.write(&self.handle);
         std::thread::sleep(std::time::Duration::from_micros(300));
         let _ = Unknown0070 { value: 0x00400000 }.write(&self.handle);
-        let _ = Unknown006C { value: 0x0eE47114 }.write(&self.handle);
+        let _ = Unknown006C { value: 0x0EE47114 }.write(&self.handle);
         std::thread::sleep(std::time::Duration::from_micros(500));
         let _ = UnknownA00C { value: 0x00000400 }.write(&self.handle);
         std::thread::sleep(std::time::Duration::from_micros(500));

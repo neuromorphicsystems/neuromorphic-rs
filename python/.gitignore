@@ -3,4 +3,5 @@ python/neuromorphic_drivers/generated
 src/generated.rs
 tests/*.raw
 *.so
+*.pyd
 __pycache__

@@ -43,6 +43,35 @@ unsafe impl Send for DeviceReference<'_> {}
 struct AdapterReference<'a>(pub &'a mut neuromorphic_drivers_rs::Adapter);
 unsafe impl Send for AdapterReference<'_> {}
 
+fn next_output(
+    python: pyo3::Python,
+    buffer_view: Option<neuromorphic_drivers_rs::usb::BufferView<'_>>,
+    current_t: Option<u64>,
+    packet: Option<pyo3::PyObject>,
+) -> pyo3::PyObject {
+    (
+        std::time::SystemTime::now()
+            .duration_since(std::time::SystemTime::UNIX_EPOCH)
+            .unwrap_or(std::time::Duration::from_secs(0))
+            .as_secs_f64(),
+        buffer_view.map(|buffer_view| {
+            (
+                buffer_view
+                    .system_time
+                    .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                    .unwrap_or(std::time::Duration::from_secs(0))
+                    .as_secs_f64(),
+                buffer_view.read,
+                buffer_view.write_range,
+                buffer_view.ring_length,
+                current_t,
+            )
+        }),
+        packet,
+    )
+        .into_py(python)
+}
+
 #[pyo3::pymethods]
 impl Device {
     #[new]
@@ -175,66 +204,32 @@ impl Device {
                     Some(buffer_view) => {
                         pyo3::Python::with_gil(|python| -> pyo3::PyResult<pyo3::PyObject> {
                             match &mut adapter {
-                                Some(adapter) => Ok((
-                                    std::time::SystemTime::now()
-                                        .duration_since(std::time::SystemTime::UNIX_EPOCH)
-                                        .unwrap_or(std::time::Duration::from_secs(0))
-                                        .as_secs_f64(),
-                                    Some((
-                                        buffer_view
-                                            .system_time
-                                            .duration_since(std::time::SystemTime::UNIX_EPOCH)
-                                            .unwrap_or(std::time::Duration::from_secs(0))
-                                            .as_secs_f64(),
-                                        buffer_view.read,
-                                        buffer_view.write_range,
-                                        buffer_view.ring_length,
-                                        adapter.0.current_t(),
-                                    )),
-                                    adapter.0.slice_to_dict(python, buffer_view.slice)?,
-                                )
-                                    .into_py(python)),
-                                None => Ok((
-                                    std::time::SystemTime::now()
-                                        .duration_since(std::time::SystemTime::UNIX_EPOCH)
-                                        .unwrap_or(std::time::Duration::from_secs(0))
-                                        .as_secs_f64(),
-                                    Some((
-                                        buffer_view
-                                            .system_time
-                                            .duration_since(std::time::SystemTime::UNIX_EPOCH)
-                                            .unwrap_or(std::time::Duration::from_secs(0))
-                                            .as_secs_f64(),
-                                        buffer_view.read,
-                                        buffer_view.write_range,
-                                        buffer_view.ring_length,
-                                        None::<u64>,
-                                    )),
-                                    pyo3::types::PyBytes::new(python, buffer_view.slice),
-                                )
-                                    .into_py(python)),
+                                Some(adapter) => {
+                                    let packet =
+                                        adapter.0.slice_to_dict(python, buffer_view.slice)?;
+                                    Ok(next_output(
+                                        python,
+                                        Some(buffer_view),
+                                        Some(adapter.0.current_t()),
+                                        Some(packet),
+                                    ))
+                                }
+                                None => {
+                                    let packet =
+                                        pyo3::types::PyBytes::new(python, buffer_view.slice).into();
+                                    Ok(next_output(python, Some(buffer_view), None, Some(packet)))
+                                }
                             }
                         })
                     }
                     None => pyo3::Python::with_gil(|python| match &mut adapter {
-                        Some(_) => Ok((
-                            std::time::SystemTime::now()
-                                .duration_since(std::time::SystemTime::UNIX_EPOCH)
-                                .unwrap_or(std::time::Duration::from_secs(0))
-                                .as_secs_f64(),
-                            None::<(f64, usize, (usize, usize), usize, u64)>,
-                            pyo3::types::PyDict::new(python),
-                        )
-                            .into_py(python)),
-                        None => Ok((
-                            std::time::SystemTime::now()
-                                .duration_since(std::time::SystemTime::UNIX_EPOCH)
-                                .unwrap_or(std::time::Duration::from_secs(0))
-                                .as_secs_f64(),
-                            None::<(f64, usize, (usize, usize), usize, u64)>,
-                            None::<&pyo3::types::PyBytes>,
-                        )
-                            .into_py(python)),
+                        Some(_) => Ok(next_output(
+                            python,
+                            None,
+                            None,
+                            Some(pyo3::types::PyDict::new(python).into()),
+                        )),
+                        None => Ok(next_output(python, None, None, None)),
                     }),
                 })
                 .map(Some)
@@ -250,44 +245,20 @@ impl Device {
                     .next_with_timeout(&std::time::Duration::from_millis(100))
                 {
                     return pyo3::Python::with_gil(|python| match adapter {
-                        Some(adapter) => Ok((
-                            std::time::SystemTime::now()
-                                .duration_since(std::time::SystemTime::UNIX_EPOCH)
-                                .unwrap_or(std::time::Duration::from_secs(0))
-                                .as_secs_f64(),
-                            Some((
-                                buffer_view
-                                    .system_time
-                                    .duration_since(std::time::SystemTime::UNIX_EPOCH)
-                                    .unwrap_or(std::time::Duration::from_secs(0))
-                                    .as_secs_f64(),
-                                buffer_view.read,
-                                buffer_view.write_range,
-                                buffer_view.ring_length,
-                                adapter.0.current_t(),
-                            )),
-                            adapter.0.slice_to_dict(python, buffer_view.slice)?,
-                        )
-                            .into_py(python)),
-                        None => Ok((
-                            std::time::SystemTime::now()
-                                .duration_since(std::time::SystemTime::UNIX_EPOCH)
-                                .unwrap_or(std::time::Duration::from_secs(0))
-                                .as_secs_f64(),
-                            Some((
-                                buffer_view
-                                    .system_time
-                                    .duration_since(std::time::SystemTime::UNIX_EPOCH)
-                                    .unwrap_or(std::time::Duration::from_secs(0))
-                                    .as_secs_f64(),
-                                buffer_view.read,
-                                buffer_view.write_range,
-                                buffer_view.ring_length,
-                                None::<u64>,
-                            )),
-                            pyo3::types::PyBytes::new(python, buffer_view.slice),
-                        )
-                            .into_py(python)),
+                        Some(adapter) => {
+                            let packet = adapter.0.slice_to_dict(python, buffer_view.slice)?;
+                            Ok(next_output(
+                                python,
+                                Some(buffer_view),
+                                Some(adapter.0.current_t()),
+                                Some(packet),
+                            ))
+                        }
+                        None => {
+                            let packet =
+                                pyo3::types::PyBytes::new(python, buffer_view.slice).into();
+                            Ok(next_output(python, Some(buffer_view), None, Some(packet)))
+                        }
                     })
                     .map(Some);
                 }

@@ -139,6 +139,7 @@ class Canvas(vispy.app.Canvas):
         current_t: int,
     ):
         self.current_t = current_t
+        print(current_t, dvs_events["t"][-1], current_t - dvs_events["t"][-1])    
         self.ts_and_ons[dvs_events["x"], dvs_events["y"]] = dvs_events["t"].astype(
             numpy.float32
         ) * (dvs_events["on"].astype(numpy.float32) * 2.0 - 1.0)
@@ -150,7 +151,7 @@ class Canvas(vispy.app.Canvas):
 if __name__ == "__main__":
     neuromorphic_drivers.print_device_list()
     camera_thread: typing.Optional[threading.Thread] = None
-    with neuromorphic_drivers.open(iterator_timeout=FRAME_DURATION) as device:
+    with neuromorphic_drivers.open() as device:
         print(device.serial(), device.properties())
         canvas = Canvas(
             sensor_width=int(device.properties().width),

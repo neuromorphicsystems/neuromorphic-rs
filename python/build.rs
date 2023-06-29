@@ -6,9 +6,7 @@ fn quote_type(
     name_to_new_name: &std::collections::HashMap<String, String>,
 ) -> String {
     match format {
-        reflect::Format::TypeName(name) => {
-            name_to_new_name.get(name).unwrap_or(name).clone()
-        }
+        reflect::Format::TypeName(name) => name_to_new_name.get(name).unwrap_or(name).clone(),
         reflect::Format::Unit => "serde.type.unit".into(),
         reflect::Format::Bool => "bool".into(),
         reflect::Format::I8 => "serde.type.int8".into(),
@@ -238,7 +236,8 @@ fn generate_dataclasses<Writer: std::io::Write, Structure>(
                 if let NodeClass::Dataclass {
                     children,
                     fields: _,
-                } = &node.class {
+                } = &node.class
+                {
                     new_nodes_names_to_update.extend(
                         children
                             .iter()
