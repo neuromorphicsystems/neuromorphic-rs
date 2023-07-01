@@ -1,10 +1,9 @@
 mod adapters;
+mod bytes;
 mod structured_array;
 extern crate neuromorphic_drivers as neuromorphic_drivers_rs;
-use std::ops::DerefMut;
-
-use adapters::Adapter;
 use pyo3::IntoPy;
+use std::ops::DerefMut;
 
 type ListedDevice = (String, String, Option<String>, Option<String>);
 
@@ -31,8 +30,9 @@ fn list_devices() -> pyo3::PyResult<Vec<ListedDevice>> {
 #[pyo3::pyclass(subclass)]
 struct Device {
     device: Option<std::cell::RefCell<neuromorphic_drivers_rs::Device>>,
-    adapter: Option<std::cell::RefCell<neuromorphic_drivers_rs::Adapter>>,
+    adapter: Option<std::cell::RefCell<adapters::Adapter>>,
     iterator_timeout: Option<std::time::Duration>,
+    iterator_maximum_raw_packets: usize,
     error_flag: neuromorphic_drivers_rs::error::Flag<neuromorphic_drivers_rs::Error>,
 }
 
@@ -40,36 +40,18 @@ struct Device {
 // see https://docs.rs/pyo3/0.19.0/pyo3/marker/index.html
 struct DeviceReference<'a>(pub &'a mut neuromorphic_drivers_rs::Device);
 unsafe impl Send for DeviceReference<'_> {}
-struct AdapterReference<'a>(pub &'a mut neuromorphic_drivers_rs::Adapter);
-unsafe impl Send for AdapterReference<'_> {}
+enum Buffer<'a> {
+    Adapter(&'a mut adapters::Adapter),
+    Bytes(bytes::Bytes),
+}
+unsafe impl Send for Buffer<'_> {}
 
-fn next_output(
-    python: pyo3::Python,
-    buffer_view: Option<neuromorphic_drivers_rs::usb::BufferView<'_>>,
+struct Status {
+    system_time: std::time::SystemTime,
+    read_range: (usize, usize),
+    write_range: (usize, usize),
+    ring_length: usize,
     current_t: Option<u64>,
-    packet: Option<pyo3::PyObject>,
-) -> pyo3::PyObject {
-    (
-        std::time::SystemTime::now()
-            .duration_since(std::time::SystemTime::UNIX_EPOCH)
-            .unwrap_or(std::time::Duration::from_secs(0))
-            .as_secs_f64(),
-        buffer_view.map(|buffer_view| {
-            (
-                buffer_view
-                    .system_time
-                    .duration_since(std::time::SystemTime::UNIX_EPOCH)
-                    .unwrap_or(std::time::Duration::from_secs(0))
-                    .as_secs_f64(),
-                buffer_view.read,
-                buffer_view.write_range,
-                buffer_view.ring_length,
-                current_t,
-            )
-        }),
-        packet,
-    )
-        .into_py(python)
 }
 
 #[pyo3::pymethods]
@@ -77,6 +59,7 @@ impl Device {
     #[new]
     fn new(
         raw: bool,
+        iterator_maximum_raw_packets: usize,
         type_and_configuration: Option<(&str, &[u8])>,
         serial: Option<&str>,
         usb_configuration: Option<&[u8]>,
@@ -125,7 +108,7 @@ impl Device {
         let adapter = if raw {
             None
         } else {
-            Some(std::cell::RefCell::new(device.adapter()))
+            Some(std::cell::RefCell::new(device.adapter().into()))
         };
         Ok(Self {
             device: Some(std::cell::RefCell::new(device)),
@@ -142,6 +125,7 @@ impl Device {
                 }
                 None => None,
             },
+            iterator_maximum_raw_packets,
             error_flag,
         })
     }
@@ -167,8 +151,10 @@ impl Device {
         slf: pyo3::PyRef<Self>,
         python: pyo3::Python,
     ) -> pyo3::PyResult<Option<pyo3::PyObject>> {
+        let start = std::time::Instant::now();
         let error_flag = slf.error_flag.clone();
         let iterator_timeout = slf.iterator_timeout;
+        let iterator_maximum_raw_packets = slf.iterator_maximum_raw_packets;
         let mut device_reference = slf
             .device
             .as_ref()
@@ -190,79 +176,87 @@ impl Device {
             })?),
             None => None,
         };
-        let mut adapter = adapter_reference
-            .as_mut()
-            .map(|adapter| AdapterReference(adapter.deref_mut()));
-        python.allow_threads(|| match iterator_timeout {
-            Some(iterator_timeout) => {
+        let mut buffer = adapter_reference.as_mut().map_or_else(
+            || Buffer::Bytes(bytes::Bytes::new()),
+            |adapter| Buffer::Adapter(adapter.deref_mut()),
+        );
+        python.allow_threads(|| -> pyo3::PyResult<Option<pyo3::PyObject>> {
+            let mut status = None;
+            let mut raw_packets = 0;
+            let mut available_raw_packets = None;
+            let buffer_timeout = iterator_timeout.unwrap_or(std::time::Duration::from_millis(100));
+            loop {
                 if let Some(error) = error_flag.load() {
                     return Err(pyo3::exceptions::PyRuntimeError::new_err(format!(
                         "{error:?}"
                     )));
                 }
-                (match device.0.next_with_timeout(&iterator_timeout) {
-                    Some(buffer_view) => {
-                        pyo3::Python::with_gil(|python| -> pyo3::PyResult<pyo3::PyObject> {
-                            match &mut adapter {
-                                Some(adapter) => {
-                                    let packet =
-                                        adapter.0.slice_to_dict(python, buffer_view.slice)?;
-                                    Ok(next_output(
-                                        python,
-                                        Some(buffer_view),
-                                        Some(adapter.0.current_t()),
-                                        Some(packet),
-                                    ))
-                                }
-                                None => {
-                                    let packet =
-                                        pyo3::types::PyBytes::new(python, buffer_view.slice).into();
-                                    Ok(next_output(python, Some(buffer_view), None, Some(packet)))
-                                }
-                            }
-                        })
+                if let Some(buffer_view) = device.0.next_with_timeout(&buffer_timeout) {
+                    let mut current_status = status.get_or_insert(Status {
+                        system_time: buffer_view.system_time,
+                        read_range: (buffer_view.read, buffer_view.read + 1),
+                        write_range: buffer_view.write_range,
+                        ring_length: buffer_view.ring_length,
+                        current_t: None,
+                    });
+                    current_status.read_range = (current_status.read_range.0, buffer_view.read + 1);
+                    current_status.write_range = buffer_view.write_range;
+                    let _ = available_raw_packets.get_or_insert_with(|| {
+                        if iterator_maximum_raw_packets == 0 {
+                            buffer_view.backlog() + 1
+                        } else {
+                            iterator_maximum_raw_packets.min(buffer_view.backlog() + 1)
+                        }
+                    });
+                    raw_packets += 1;
+                    match &mut buffer {
+                        Buffer::Adapter(adapter) => {
+                            adapter.push(buffer_view.slice);
+                            current_status.current_t = Some(adapter.current_t());
+                        }
+                        Buffer::Bytes(bytes) => pyo3::Python::with_gil(|python| {
+                            bytes.extend_from_slice(python, buffer_view.slice);
+                        }),
                     }
-                    None => pyo3::Python::with_gil(|python| match &mut adapter {
-                        Some(_) => Ok(next_output(
-                            python,
-                            None,
-                            None,
-                            Some(pyo3::types::PyDict::new(python).into()),
-                        )),
-                        None => Ok(next_output(python, None, None, None)),
-                    }),
-                })
-                .map(Some)
-            }
-            None => loop {
-                if let Some(error) = error_flag.load() {
-                    return Err(pyo3::exceptions::PyRuntimeError::new_err(format!(
-                        "{error:?}"
-                    )));
                 }
-                if let Some(buffer_view) = device
-                    .0
-                    .next_with_timeout(&std::time::Duration::from_millis(100))
+                if iterator_timeout.map_or_else(|| false, |timeout| start.elapsed() >= timeout)
+                    || available_raw_packets.map_or_else(
+                        || false,
+                        |available_raw_packets| raw_packets >= available_raw_packets,
+                    )
                 {
-                    return pyo3::Python::with_gil(|python| match adapter {
-                        Some(adapter) => {
-                            let packet = adapter.0.slice_to_dict(python, buffer_view.slice)?;
-                            Ok(next_output(
-                                python,
-                                Some(buffer_view),
-                                Some(adapter.0.current_t()),
-                                Some(packet),
-                            ))
-                        }
-                        None => {
-                            let packet =
-                                pyo3::types::PyBytes::new(python, buffer_view.slice).into();
-                            Ok(next_output(python, Some(buffer_view), None, Some(packet)))
-                        }
+                    return pyo3::Python::with_gil(|python| {
+                        let packet = match &mut buffer {
+                            Buffer::Adapter(adapter) => Some(adapter.take_into_dict(python)?),
+                            Buffer::Bytes(bytes) => pyo3::Python::with_gil(|python| {
+                                bytes.take(python).map(|bytes| bytes.into())
+                            }),
+                        };
+                        Ok((
+                            std::time::SystemTime::now()
+                                .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                                .unwrap_or(std::time::Duration::from_secs(0))
+                                .as_secs_f64(),
+                            status.map(|status| {
+                                (
+                                    status
+                                        .system_time
+                                        .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                                        .unwrap_or(std::time::Duration::from_secs(0))
+                                        .as_secs_f64(),
+                                    status.read_range,
+                                    status.write_range,
+                                    status.ring_length,
+                                    status.current_t,
+                                )
+                            }),
+                            packet,
+                        )
+                            .into_py(python))
                     })
                     .map(Some);
                 }
-            },
+            }
         })
     }
 
@@ -293,9 +287,10 @@ impl Device {
             })?),
             None => None,
         };
-        let mut adapter = adapter_reference
-            .as_mut()
-            .map(|adapter| AdapterReference(adapter.deref_mut()));
+        let mut buffer = adapter_reference.as_mut().map_or_else(
+            || Buffer::Bytes(bytes::Bytes::new()),
+            |adapter| Buffer::Adapter(adapter.deref_mut()),
+        );
         python.allow_threads(|| loop {
             if let Some(error) = error_flag.load() {
                 return Err(pyo3::exceptions::PyRuntimeError::new_err(format!(
@@ -309,11 +304,8 @@ impl Device {
                 if buffer_view.backlog() < until {
                     return Ok(());
                 }
-                match &mut adapter {
-                    Some(adapter) => {
-                        adapter.0.consume(buffer_view.slice);
-                    }
-                    None => (),
+                if let Buffer::Adapter(adapter) = &mut buffer {
+                    adapter.consume(buffer_view.slice);
                 }
             } else {
                 return Ok(());

@@ -1,8 +1,9 @@
-import neuromorphic_drivers as nd
 import datetime
-import numpy
 import pathlib
 import time
+
+import neuromorphic_drivers as nd
+import numpy
 
 nd.print_device_list()
 
@@ -21,7 +22,7 @@ secondary_device = nd.open(
         clock=nd.prophesee_evk4.Clock.EXTERNAL,
     ),
 )
-time.sleep(1.0) # wait to make sure that secondary is ready
+time.sleep(1.0)  # wait to make sure that secondary is ready
 primary_device = nd.open(
     serial=PRIMARY_SERIAL,
     raw=True,
@@ -52,11 +53,11 @@ backlogs = numpy.array([0 for _ in devices])
 while True:
     index = numpy.argmax(backlogs)
     status, packet = devices[index].__next__()
-    if status.packet is None:
+    if status.ring is None:
         backlogs[:] += 1
         backlogs[index] = 0
     else:
-        backlog = status.packet.backlog()
+        backlog = status.ring.backlog()
         backlogs[:] += 1
         backlogs[index] = backlog
         delay = status.delay()

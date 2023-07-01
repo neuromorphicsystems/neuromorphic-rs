@@ -13,6 +13,12 @@ pub struct Adapter {
     polarity: neuromorphic_types::DvsPolarity,
 }
 
+#[derive(Default)]
+pub struct EventsLengths {
+    pub dvs: usize,
+    pub trigger: usize,
+}
+
 impl Adapter {
     pub fn from_dimensions(width: u16, height: u16) -> Self {
         Self {
@@ -28,9 +34,8 @@ impl Adapter {
         }
     }
 
-    pub fn events_lengths(&self, slice: &[u8]) -> (usize, usize) {
-        let mut dvs_events = 0_usize;
-        let mut trigger_events = 0_usize;
+    pub fn events_lengths(&self, slice: &[u8]) -> EventsLengths {
+        let mut lengths = EventsLengths::default();
         let mut x = self.x;
         let mut y = self.y;
         for index in 0..slice.len() / 2 {
@@ -43,7 +48,7 @@ impl Adapter {
                 0b0010 => {
                     x = word & 0b11111111111;
                     if x < self.width && y < self.height {
-                        dvs_events += 1;
+                        lengths.dvs += 1;
                     }
                 }
                 0b0011 => {
@@ -51,25 +56,25 @@ impl Adapter {
                 }
                 0b0100 => {
                     if x < self.width && y < self.height {
-                        dvs_events += (word & ((1 << std::cmp::min(12, self.width - x)) - 1))
+                        lengths.dvs += (word & ((1 << std::cmp::min(12, self.width - x)) - 1))
                             .count_ones() as usize;
                         x += 12;
                     }
                 }
                 0b0101 => {
                     if x < self.width && y < self.height {
-                        dvs_events += (word & ((1 << std::cmp::min(8, self.width - x)) - 1))
+                        lengths.dvs += (word & ((1 << std::cmp::min(8, self.width - x)) - 1))
                             .count_ones() as usize;
                         x += 8;
                     }
                 }
                 0b1010 => {
-                    trigger_events += 1;
+                    lengths.trigger += 1;
                 }
                 _ => (),
             }
         }
-        (dvs_events, trigger_events)
+        lengths
     }
 
     pub fn current_t(&self) -> u64 {

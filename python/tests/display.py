@@ -7,7 +7,6 @@ import vispy.app
 import vispy.gloo
 import vispy.util.transforms
 
-vispy.app.use_app(backend_name="glfw")
 
 FRAME_DURATION: float = 1.0 / 60.0
 ON_COLORMAP: list[str] = ["#F4C20D", "#191919"]
@@ -166,16 +165,13 @@ if __name__ == "__main__":
                 if packet is not None:
                     if "dvs_events" in packet:
                         assert (
-                            status.packet is not None
-                            and status.packet.current_t is not None
+                            status.ring is not None
+                            and status.ring.current_t is not None
                         )
-                        canvas.push(packet["dvs_events"], status.packet.current_t)
-                    elif (
-                        status.packet is not None
-                        and status.packet.current_t is not None
-                    ):
-                        canvas.update_t(status.packet.current_t)
-                    if status.packet is not None and status.packet.backlog() > 1000:
+                        canvas.push(packet["dvs_events"], status.ring.current_t)
+                    elif status.ring is not None and status.ring.current_t is not None:
+                        canvas.update_t(status.ring.current_t)
+                    if status.ring is not None and status.ring.backlog() > 1000:
                         device.clear_backlog(until=0)
 
         camera_thread = threading.Thread(target=camera_worker)

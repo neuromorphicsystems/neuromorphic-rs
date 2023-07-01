@@ -7,7 +7,7 @@ fn convert() {
             let mut adapter =
                 neuromorphic_drivers::adapters::evt3::Adapter::from_dimensions(1280, 720);
             let start = std::time::Instant::now();
-            let (dvs_events_length, _) = adapter.events_lengths(&bytes);
+            let dvs_events_length = adapter.events_lengths(&bytes).dvs;
             let mut events = Vec::new();
             events.reserve(dvs_events_length);
             unsafe {

@@ -6,8 +6,8 @@ import typing
 
 from . import serde as serde
 from .generated.devices_types import *
-from .neuromorphic_drivers import list_devices as extension_list_devices
 from .mask import *
+from .neuromorphic_drivers import list_devices as extension_list_devices
 from .udev import *
 
 
