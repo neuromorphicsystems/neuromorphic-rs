@@ -12,8 +12,10 @@ with nd.open(raw=True) as device:
     print(f"writing to {filename}")
     total = 0
     with open(filename, "wb") as output:
-        for _, packet in device:
+        for status, packet in device:
             output.write(packet)
             output.flush()
             total += len(packet)
-            print(f"{total / 1e6:.1f} MB")
+            print(
+                f"{total / 1e6:.1f} MB (backlog: {status.ring.backlog()}, raw: {status.ring.raw_packets()})"
+            )
