@@ -7,6 +7,7 @@ import vispy.app
 import vispy.gloo
 import vispy.util.transforms
 
+vispy.app.use_app(backend_name="glfw")
 
 FRAME_DURATION: float = 1.0 / 60.0
 ON_COLORMAP: list[str] = ["#F4C20D", "#191919"]
@@ -51,7 +52,9 @@ void main() {{
 
 
 class Canvas(vispy.app.Canvas):
-    def __init__(self, sensor_width: int, sensor_height: int):
+    def __init__(
+        self, sensor_width: int, sensor_height: int, device: nd.GenericDeviceOptional
+    ):
         self.program = None
         vispy.app.Canvas.__init__(
             self,
@@ -60,6 +63,7 @@ class Canvas(vispy.app.Canvas):
         )
         self.sensor_width = sensor_width
         self.sensor_height = sensor_height
+        self.device = device
         self.program = vispy.gloo.Program(VERTEX_SHADER, FRAGMENT_SHADER)
         self.ts_and_ons = np.zeros(
             (self.sensor_width, self.sensor_height),
@@ -129,53 +133,32 @@ class Canvas(vispy.app.Canvas):
     def on_draw(self, event):
         assert self.program is not None
         vispy.gloo.clear(color=True, depth=True)
-        self.program["u_t"] = np.float32(self.current_t)
+        status, packet = next(device)
+        if packet is not None:
+            if "dvs_events" in packet:
+                assert status.ring is not None and status.ring.current_t is not None
+                self.program["u_t"] = np.float32(status.ring.current_t)
+                self.ts_and_ons[
+                    packet["dvs_events"]["x"], packet["dvs_events"]["y"]
+                ] = packet["dvs_events"]["t"].astype(np.float32) * (
+                    packet["dvs_events"]["on"].astype(np.float32) * 2.0 - 1.0
+                )
+            elif status.ring is not None and status.ring.current_t is not None:
+                self.program["u_t"] = np.float32(status.ring.current_t)
+            if status.ring is not None and status.ring.backlog() > 1000:
+                device.clear_backlog(until=0)
         self.texture.set_data(self.ts_and_ons)
         self.program.draw("triangle_strip")
-
-    def push(
-        self,
-        dvs_events: np.ndarray[typing.Any, np.dtype[np.void]],
-        current_t: int,
-    ):
-        self.current_t = current_t
-        self.ts_and_ons[dvs_events["x"], dvs_events["y"]] = dvs_events["t"].astype(
-            np.float32
-        ) * (dvs_events["on"].astype(np.float32) * 2.0 - 1.0)
-
-    def update_t(self, current_t: int):
-        self.current_t = current_t
 
 
 if __name__ == "__main__":
     nd.print_device_list()
     camera_thread: typing.Optional[threading.Thread] = None
-    with nd.open() as device:
+    with nd.open(iterator_timeout=FRAME_DURATION) as device:
         print(device.serial(), device.properties())
         canvas = Canvas(
             sensor_width=int(device.properties().width),
             sensor_height=int(device.properties().height),
+            device=device,
         )
-        thread_context = {"running": True}
-
-        def camera_worker():
-            for status, packet in device:
-                if not thread_context["running"]:
-                    break
-                if packet is not None:
-                    if "dvs_events" in packet:
-                        assert (
-                            status.ring is not None
-                            and status.ring.current_t is not None
-                        )
-                        canvas.push(packet["dvs_events"], status.ring.current_t)
-                    elif status.ring is not None and status.ring.current_t is not None:
-                        canvas.update_t(status.ring.current_t)
-                    if status.ring is not None and status.ring.backlog() > 1000:
-                        device.clear_backlog(until=0)
-
-        camera_thread = threading.Thread(target=camera_worker)
-        camera_thread.start()
         vispy.app.run()
-        thread_context["running"] = False
-        camera_thread.join()
