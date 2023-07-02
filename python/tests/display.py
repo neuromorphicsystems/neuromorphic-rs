@@ -60,6 +60,8 @@ class Canvas(vispy.app.Canvas):
             self,
             keys="interactive",
             size=(sensor_width, sensor_height),
+            vsync=True,
+            title=device.name().value,
         )
         self.sensor_width = sensor_width
         self.sensor_height = sensor_height

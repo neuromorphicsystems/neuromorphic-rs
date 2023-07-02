@@ -3,7 +3,7 @@ import pathlib
 import time
 
 import neuromorphic_drivers as nd
-import numpy
+import numpy as np
 
 nd.print_device_list()
 
@@ -49,9 +49,9 @@ outputs = [
     open(dirname / f"{name}_{SECONDARY_SERIAL}.raw", "wb"),
 ]
 
-backlogs = numpy.array([0 for _ in devices])
+backlogs = np.array([0 for _ in devices])
 while True:
-    index = numpy.argmax(backlogs)
+    index = np.argmax(backlogs)
     status, packet = devices[index].__next__()
     if status.ring is None:
         backlogs[:] += 1

@@ -1,5 +1,5 @@
 import neuromorphic_drivers as nd
-import numpy
+import numpy as np
 
 nd.print_device_list()
 
@@ -9,9 +9,9 @@ for listed_device in nd.list_devices():
     devices.append(device)
     print(listed_device.serial, devices[0].serial(), devices[0].properties())
 
-backlogs = numpy.array([0 for _ in devices])
+backlogs = np.array([0 for _ in devices])
 while True:
-    index = numpy.argmax(backlogs)
+    index = np.argmax(backlogs)
     status, packet = devices[index].__next__()
     backlog = status.ring.backlog()
     print(f"{index}: {round(status.delay() * 1e6)} µs, backlog: {backlog}")

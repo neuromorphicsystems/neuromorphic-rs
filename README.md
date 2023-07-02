@@ -1,4 +1,47 @@
-# neuromorphic_drivers
+neuromorphic_drivers is a library to interact with USB Neuromorphic devices. The drivers were written from scratch with portability and performance in mind.
+
+- [Supported devices and features](#supported-devices-and-features)
+- [Python](#python)
+    - [Get started](#get-started)
+    - [Examples](#examples)
+    - [Performance considerations](#performance-considerations)
+    - [(Advanced) Direct Memory Access](#advanced-direct-memory-access)
+
+# Supported devices and features
+
+| Name              | Type   | Resolution | Data types   | Mask | Synchronize | Rate limiter |
+| ----------------- | ------ | ---------- | ------------ | ---- | ----------- | ------------ |
+| Prophesee EVK4    | Camera | 1280 × 720 | DVS, trigger | ✓    | ✓           | ✓            |
+| Prophesee EVK3 HD | Camera | 1280 × 720 | DVS, trigger | ✓    | -           | ✓            |
+
+This table lists fratures supported by this library. Certain sensors support unlisted features or features marked as "no" that have yet to be added to neuromorphic_drivers.
+
+| Name              | Links                                       |
+| ----------------- | ------------------------------------------- |
+| Prophesee EVK4    | https://www.prophesee.ai/event-camera-evk4/ |
+| Prophesee EVK3 HD | https://www.prophesee.ai/event-based-evk-3/ |
+
+# Python
+
+## Get started
+
+`python3 -m pip install neuromorphic_drivers`
+
+```py
+import neuromorphic_drivers as nd
+
+nd.print_device_list()
+
+with nd.open() as device:
+    for status, packet in device:
+        # packet = {"dvs_events": np.array([...])}
+```
+
+`status` contains
+
+## Examples
+
+See _python/tests_ for different usage examples. `python/tests/display.py` implements a live event viewer with exponential decays caculated by the GPU. It requires vispy and glfw (`python3 -m pip install vispy glfw`).
 
 ## Performance considerations
 
