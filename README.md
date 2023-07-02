@@ -55,7 +55,7 @@ with nd.open() as device:
             pass
 ```
 
-The keys in a packet depend on the device and are only present if the associated array is not empty.
+The keys in a packet depend on the device and are only present if the associated array is not empty. Packets contain variable numbers of events (typically a few thousand to a few hundred thousand) covering a variable amount of time (typically a few dozen microseconds to a few milliseconds).
 
 ## Device configuration
 
