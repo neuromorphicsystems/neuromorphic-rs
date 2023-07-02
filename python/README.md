@@ -1,7 +1,3 @@
 # neuromorphic_drivers
 
-## Format and lint
-
-```sh
-isort .; black .; pyright .
-```
+See https://github.com/neuromorphicsystems/neuromorphic-rs for documentation and examples.
