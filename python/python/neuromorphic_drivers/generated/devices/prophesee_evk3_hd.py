@@ -7,7 +7,8 @@ import typing
 
 import numpy
 
-from ... import serde, status
+from ... import serde
+from ... import status
 from .. import enums
 
 
@@ -119,12 +120,7 @@ class Device(typing.Protocol):
     def __iter__(self) -> "Device":
         ...
 
-    def __next__(
-        self,
-    ) -> tuple[
-        status.StatusNonOptional,
-        dict[str, numpy.ndarray[typing.Any, numpy.dtype[numpy.void]]],
-    ]:
+    def __next__(self) -> tuple[status.StatusNonOptional, dict[str, numpy.ndarray[typing.Any, numpy.dtype[numpy.void]]]]:
         ...
 
     def clear_backlog(self, until: int):
@@ -158,12 +154,7 @@ class DeviceOptional(typing.Protocol):
     def __iter__(self) -> "DeviceOptional":
         ...
 
-    def __next__(
-        self,
-    ) -> tuple[
-        status.Status,
-        typing.Optional[dict[str, numpy.ndarray[typing.Any, numpy.dtype[numpy.void]]]],
-    ]:
+    def __next__(self) -> tuple[status.Status, typing.Optional[dict[str, numpy.ndarray[typing.Any, numpy.dtype[numpy.void]]]]]:
         ...
 
     def clear_backlog(self, until: int):

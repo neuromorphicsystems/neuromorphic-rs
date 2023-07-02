@@ -1,7 +1,9 @@
 import typing
 
 from . import enums
-from .devices import prophesee_evk3_hd, prophesee_evk4
+from .devices import prophesee_evk3_hd
+from .devices import prophesee_evk4
+
 
 Properties = typing.Union[
     prophesee_evk3_hd.Properties,

@@ -147,13 +147,22 @@ See _python/tests_ for different usage examples. `python/tests/display.py` imple
 
 ## Contribute
 
-Local build.
+Local build (first run).
 
 ```sh
 cd python
-python3 -m venv .venv  # the first time only
+python3 -m venv .venv
 source .venv/bin/activate
-pip install maturin  # the first time only
+pip install --upgrade pip
+pip install maturin numpy
+maturin develop  # or maturin develop --release to build with optimizations
+```
+
+Local build (subsequent runs).
+
+```sh
+cd python
+source .venv/bin/activate
 maturin develop  # or maturin develop --release to build with optimizations
 ```
 

@@ -1,5 +1,4 @@
 .venv
-src/generated.rs
 tests/*.raw
 *.so
 *.pyd

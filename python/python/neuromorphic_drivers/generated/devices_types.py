@@ -5,11 +5,13 @@ import typing
 
 import numpy
 
-from .. import device, status
+from .. import device
+from .. import status
 from .devices import prophesee_evk3_hd as prophesee_evk3_hd
 from .devices import prophesee_evk4 as prophesee_evk4
 from .enums import *
 from .unions import *
+
 
 
 class GenericDevice(typing.Protocol):
@@ -27,12 +29,7 @@ class GenericDevice(typing.Protocol):
     def __iter__(self) -> "GenericDevice":
         ...
 
-    def __next__(
-        self,
-    ) -> tuple[
-        status.StatusNonOptional,
-        dict[str, numpy.ndarray[typing.Any, numpy.dtype[numpy.void]]],
-    ]:
+    def __next__(self) -> tuple[status.StatusNonOptional, dict[str, numpy.ndarray[typing.Any, numpy.dtype[numpy.void]]]]:
         ...
 
     def clear_backlog(self, until: int):
@@ -66,12 +63,7 @@ class GenericDeviceOptional(typing.Protocol):
     def __iter__(self) -> "GenericDeviceOptional":
         ...
 
-    def __next__(
-        self,
-    ) -> tuple[
-        status.Status,
-        typing.Optional[dict[str, numpy.ndarray[typing.Any, numpy.dtype[numpy.void]]]],
-    ]:
+    def __next__(self) -> tuple[status.Status, typing.Optional[dict[str, numpy.ndarray[typing.Any, numpy.dtype[numpy.void]]]]]:
         ...
 
     def clear_backlog(self, until: int):

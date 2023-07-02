@@ -24,16 +24,15 @@ build-backend = "maturin"
 python-source = "python"
 
 [tool.black]
-extend-exclude = ".venv"
+extend-exclude = "python/neuromorphic_drivers/generated"
 
 [tool.pyright]
 typeCheckingMode = "basic"
-executionEnvironments = [
-    {root=".", venv=".venv"},
-]
+executionEnvironments = [{root = ".", venv = ".venv"}]
 
 [tool.isort]
 profile = "black"
+extend_skip = "python/neuromorphic_drivers/generated"
 
 [project.scripts]
 neuromorphic-drivers-install-udev-rules = "neuromorphic_drivers:install_udev_rules"
