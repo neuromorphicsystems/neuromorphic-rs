@@ -799,6 +799,30 @@ macro_rules! generate {
     };
 }
 
+fn macos_link_search_path() -> Option<String> {
+    let output = cc::Build::new()
+        .get_compiler()
+        .to_command()
+        .arg("--print-search-dirs")
+        .output()
+        .unwrap();
+    for line in String::from_utf8_lossy(&output.stdout).lines() {
+        if line.contains("libraries: =") {
+            let path = line.split('=').nth(1).unwrap();
+            if !path.is_empty() {
+                return Some(format!("{}/lib/darwin", path));
+            }
+        }
+    }
+    None
+}
+
 fn main() {
+    if std::env::var("TARGET").unwrap().contains("apple") {
+        if let Some(path) = macos_link_search_path() {
+            println!("cargo:rustc-link-lib=clang_rt.osx");
+            println!("cargo:rustc-link-search={}", path);
+        }
+    }
     generate!(prophesee_evk3_hd, prophesee_evk4);
 }
