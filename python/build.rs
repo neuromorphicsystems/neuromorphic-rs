@@ -824,6 +824,33 @@ fn macos_link_search_path() -> Option<String> {
 }
 
 fn main() {
+    {
+        let cargo_toml = std::fs::read_to_string("Cargo.toml")
+            .unwrap()
+            .parse::<toml::Value>()
+            .unwrap();
+        let cargo_version = cargo_toml
+            .get("package")
+            .unwrap()
+            .get("version")
+            .unwrap()
+            .as_str()
+            .unwrap();
+        let pyproject_toml = std::fs::read_to_string("pyproject.toml")
+            .unwrap()
+            .parse::<toml::Value>()
+            .unwrap();
+        let pyproject_version = pyproject_toml
+            .get("project")
+            .unwrap()
+            .get("version")
+            .unwrap()
+            .as_str()
+            .unwrap();
+        if cargo_version != pyproject_version {
+            panic!("the cargo version ({cargo_version}) and the pyproject version ({pyproject_version}) are different");
+        }
+    }
     if std::env::var("TARGET").unwrap().contains("apple") {
         if let Some(path) = macos_link_search_path() {
             println!("cargo:rustc-link-lib=clang_rt.osx");
