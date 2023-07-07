@@ -29,7 +29,7 @@ fn list_devices() -> pyo3::PyResult<Vec<ListedDevice>> {
 
 #[pyo3::pyclass(subclass)]
 struct Device {
-    device: Option<std::cell::RefCell<neuromorphic_drivers_rs::Device>>,
+    device: Option<neuromorphic_drivers_rs::Device>,
     adapter: Option<std::cell::RefCell<adapters::Adapter>>,
     iterator_timeout: Option<std::time::Duration>,
     iterator_maximum_raw_packets: usize,
@@ -38,8 +38,9 @@ struct Device {
 
 // unsafe workaround until auto traits are stabilized
 // see https://docs.rs/pyo3/0.19.0/pyo3/marker/index.html
-struct DeviceReference<'a>(pub &'a mut neuromorphic_drivers_rs::Device);
+struct DeviceReference<'a>(pub &'a neuromorphic_drivers_rs::Device);
 unsafe impl Send for DeviceReference<'_> {}
+unsafe impl Sync for DeviceReference<'_> {}
 enum Buffer<'a> {
     Adapter(&'a mut adapters::Adapter),
     Bytes(bytes::Bytes),
@@ -111,7 +112,7 @@ impl Device {
             Some(std::cell::RefCell::new(device.adapter().into()))
         };
         Ok(Self {
-            device: Some(std::cell::RefCell::new(device)),
+            device: Some(device),
             adapter,
             iterator_timeout: match iterator_timeout {
                 Some(seconds) => {
@@ -155,19 +156,9 @@ impl Device {
         let error_flag = slf.error_flag.clone();
         let iterator_timeout = slf.iterator_timeout;
         let iterator_maximum_raw_packets = slf.iterator_maximum_raw_packets;
-        let mut device_reference = slf
-            .device
-            .as_ref()
-            .ok_or(pyo3::exceptions::PyRuntimeError::new_err(
-                "__next__ called after __exit__",
-            ))?
-            .try_borrow_mut()
-            .map_err(|_| {
-                pyo3::exceptions::PyRuntimeError::new_err(
-                    "__next__ called while device is used by a different thread",
-                )
-            })?;
-        let device = DeviceReference(device_reference.deref_mut());
+        let device = DeviceReference(slf.device.as_ref().ok_or(
+            pyo3::exceptions::PyRuntimeError::new_err("__next__ called after __exit__"),
+        )?);
         let mut adapter_reference = match slf.adapter.as_ref() {
             Some(adapter) => Some(adapter.try_borrow_mut().map_err(|_| {
                 pyo3::exceptions::PyRuntimeError::new_err(
@@ -266,19 +257,9 @@ impl Device {
         until: usize,
     ) -> pyo3::PyResult<()> {
         let error_flag = slf.error_flag.clone();
-        let mut device_reference = slf
-            .device
-            .as_ref()
-            .ok_or(pyo3::exceptions::PyRuntimeError::new_err(
-                "__next__ called after __exit__",
-            ))?
-            .try_borrow_mut()
-            .map_err(|_| {
-                pyo3::exceptions::PyRuntimeError::new_err(
-                    "__next__ called while device is used by a different thread",
-                )
-            })?;
-        let device = DeviceReference(device_reference.deref_mut());
+        let device = DeviceReference(slf.device.as_ref().ok_or(
+            pyo3::exceptions::PyRuntimeError::new_err("__next__ called after __exit__"),
+        )?);
         let mut adapter_reference = match slf.adapter.as_ref() {
             Some(adapter) => Some(adapter.try_borrow_mut().map_err(|_| {
                 pyo3::exceptions::PyRuntimeError::new_err(
@@ -320,12 +301,6 @@ impl Device {
             .ok_or(pyo3::exceptions::PyRuntimeError::new_err(
                 "name called after __exit__",
             ))?
-            .try_borrow()
-            .map_err(|_| {
-                pyo3::exceptions::PyRuntimeError::new_err(
-                    "name called while device is used by a different thread",
-                )
-            })?
             .name()
             .to_owned())
     }
@@ -337,12 +312,6 @@ impl Device {
             .ok_or(pyo3::exceptions::PyRuntimeError::new_err(
                 "serial called after __exit__",
             ))?
-            .try_borrow()
-            .map_err(|_| {
-                pyo3::exceptions::PyRuntimeError::new_err(
-                    "serial called while device is used by a different thread",
-                )
-            })?
             .serial())
     }
 
@@ -353,14 +322,33 @@ impl Device {
             .ok_or(pyo3::exceptions::PyRuntimeError::new_err(
                 "speed called after __exit__",
             ))?
-            .try_borrow()
-            .map_err(|_| {
-                pyo3::exceptions::PyRuntimeError::new_err(
-                    "speed called while device is used by a different thread",
-                )
-            })?
             .speed()
             .to_string())
+    }
+
+    fn update_configuration(
+        slf: pyo3::PyRef<Self>,
+        type_and_configuration: (&str, &[u8]),
+    ) -> pyo3::PyResult<()> {
+        let configuration = neuromorphic_drivers_rs::Configuration::deserialize_bincode(
+            type_and_configuration
+                .0
+                .parse()
+                .map_err(|error| pyo3::exceptions::PyRuntimeError::new_err(format!("{error}")))?,
+            type_and_configuration.1,
+        )
+        .map_err(|error| pyo3::exceptions::PyRuntimeError::new_err(format!("{error}")))?;
+        slf.device
+            .as_ref()
+            .ok_or(pyo3::exceptions::PyRuntimeError::new_err(
+                "__next__ called after __exit__",
+            ))?
+            .update_configuration(configuration)
+            .map_err(|_| {
+                pyo3::exceptions::PyRuntimeError::new_err(
+                    "update_configuration called while device is used by a different thread",
+                )
+            })
     }
 }
 

@@ -625,7 +625,7 @@ impl device::Usb for Device {
         })
     }
 
-    fn next_with_timeout(&mut self, timeout: &std::time::Duration) -> Option<usb::BufferView> {
+    fn next_with_timeout(&self, timeout: &std::time::Duration) -> Option<usb::BufferView> {
         self.ring.next_with_timeout(timeout)
     }
 
@@ -826,7 +826,8 @@ fn update_configuration(
         Some(previous_configuration) => {
             previous_configuration.x_mask != configuration.x_mask
                 || previous_configuration.y_mask != configuration.y_mask
-                || previous_configuration.mask_intersection_only != configuration.mask_intersection_only
+                || previous_configuration.mask_intersection_only
+                    != configuration.mask_intersection_only
         }
         None => true,
     } {

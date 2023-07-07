@@ -4,6 +4,7 @@ neuromorphic_drivers is a library to interact with USB Neuromorphic devices. The
 - [Python](#python)
     - [Get started](#get-started)
     - [Device configuration](#device-configuration)
+    - [Rate limiter](#rate-limiter)
     - [Raw mode](#raw-mode)
     - [Other open options](#other-open-options)
     - [More examples](#more-examples)
@@ -81,6 +82,24 @@ with nd.open(configuration=configuration) as device:
 ```
 
 `nd.open` may open any supported device. However, it only considers matching devices if a configuration is specified. Passing the wrong configuration type to `update_configuration` raises an error.
+
+## Rate limiter
+
+Prophesee's EVK4 has a hardware event-rate limiter that randomly drops events when the sensor generates more than a given number per second. The limiter has two parameters. `reference_period_us` defines a count period in µs (maximum 200). `maximum_events_per_period` defines the number of events per period beyond which the limiter activates. The effective limit is `maximum_events_per_period / reference_period_us` in events/µs.
+
+```py
+import neuromorphic_drivers as nd
+
+configuration = nd.prophesee_evk4.Configuration(
+    rate_limiter=nd.prophesee_evk4.RateLimiter(
+        reference_period_us=200,
+        maximum_events_per_period=4000,
+    )
+)
+
+with nd.open(configuration=configuration) as device:
+    ...
+```
 
 ## Raw mode
 

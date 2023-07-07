@@ -61,6 +61,14 @@ macro_rules! register {
                         )+
                     }
                 }
+
+                pub fn type_name(&self) -> &'static str {
+                    match self {
+                        $(
+                            Configuration::[<$module:camel>](_) => Type::[<$module:camel>].name(),
+                        )+
+                    }
+                }
             }
 
             pub enum Device {
@@ -165,7 +173,7 @@ macro_rules! register {
                     }
                 }
 
-                pub fn next_with_timeout(&mut self, timeout: &std::time::Duration) -> Option<usb::BufferView> {
+                pub fn next_with_timeout(&self, timeout: &std::time::Duration) -> Option<usb::BufferView> {
                     match self {
                         $(
                             Self::[<$module:camel>](device) => device.next_with_timeout(timeout),
@@ -201,6 +209,23 @@ macro_rules! register {
                     match self {
                         $(
                             Self::[<$module:camel>](device) => device.speed(),
+                        )+
+                    }
+                }
+
+                pub fn update_configuration(&self, configuration: Configuration) -> Result<(), Error> {
+                    match self {
+                        $(
+                            Self::[<$module:camel>](device) => match configuration {
+                                Configuration::[<$module:camel>](configuration) => {
+                                    device.update_configuration(configuration);
+                                    Ok(())
+                                },
+                                configuration => Err(Error::UpdateMismatch {
+                                    configuration: configuration.type_name().to_owned(),
+                                    device: $module::Device::PROPERTIES.name.to_owned(),
+                                })
+                            },
                         )+
                     }
                 }
@@ -249,6 +274,12 @@ macro_rules! register {
 
                 #[error("control transfer error (expected {expected:?}, read {read:?})")]
                 Mismatch { expected: Vec<u8>, read: Vec<u8> },
+
+                #[error("configuration for {configuration:?} is not compatible with device {device:?}")]
+                UpdateMismatch {
+                    configuration: String,
+                    device: String,
+                },
 
                 $(
                     #[error(transparent)]

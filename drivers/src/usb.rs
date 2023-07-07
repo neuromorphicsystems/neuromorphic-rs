@@ -208,10 +208,14 @@ impl LibusbTransfer {
 pub struct Ring {
     transfers: Vec<LibusbTransfer>,
     handle: std::sync::Arc<rusb::DeviceHandle<rusb::Context>>,
+    active_buffer_view: std::sync::Arc<std::sync::atomic::AtomicBool>,
     #[allow(dead_code)]
     event_loop: std::sync::Arc<EventLoop>,
     context: std::sync::Arc<RingContext>,
 }
+
+unsafe impl Send for Ring {}
+unsafe impl Sync for Ring {}
 
 pub enum TransferType {
     Control(std::time::Duration),
@@ -593,6 +597,7 @@ impl Ring {
         let result = Self {
             transfers,
             handle,
+            active_buffer_view: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
             event_loop,
             context,
         };
@@ -645,8 +650,7 @@ pub struct BufferView<'a> {
     pub read: usize,
     pub write_range: (usize, usize),
     pub ring_length: usize,
-    #[allow(dead_code)]
-    ring: &'a mut Ring,
+    active: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl BufferView<'_> {
@@ -661,8 +665,21 @@ impl BufferView<'_> {
     }
 }
 
+impl Drop for BufferView<'_> {
+    fn drop(&mut self) {
+        self.active
+            .store(false, std::sync::atomic::Ordering::Release);
+    }
+}
+
 impl Ring {
-    pub fn next_with_timeout(&mut self, duration: &std::time::Duration) -> Option<BufferView> {
+    pub fn next_with_timeout(&self, duration: &std::time::Duration) -> Option<BufferView> {
+        if self
+            .active_buffer_view
+            .swap(true, std::sync::atomic::Ordering::AcqRel)
+        {
+            panic!("the buffer returned by a previous call of next_with_timeout must be dropped before calling next_with_timeout again");
+        }
         let (system_time, slice, read, write_range, ring_length) = {
             let start = std::time::Instant::now();
             // unwrap: mutex is not poisonned
@@ -709,7 +726,7 @@ impl Ring {
             read,
             write_range,
             ring_length,
-            ring: self,
+            active: self.active_buffer_view.clone(),
         })
     }
 }

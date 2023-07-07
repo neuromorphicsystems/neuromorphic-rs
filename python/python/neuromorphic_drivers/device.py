@@ -28,3 +28,8 @@ class Device(ExtensionDevice):
             ),
             packet,
         )
+
+    def update_configuration(self, configuration: unions.Configuration) -> None:
+        return ExtensionDevice.update_configuration(
+            self, (configuration.type(), configuration.serialize())
+        )

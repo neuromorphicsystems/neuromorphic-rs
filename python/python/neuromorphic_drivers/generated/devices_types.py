@@ -47,6 +47,9 @@ class GenericDevice(typing.Protocol):
     def speed(self) -> Speed:
         ...
 
+    def update_configuration(self, configuration: Configuration):
+        ...
+
 
 class GenericDeviceOptional(typing.Protocol):
     def __enter__(self) -> "GenericDeviceOptional":
@@ -79,6 +82,9 @@ class GenericDeviceOptional(typing.Protocol):
         ...
 
     def speed(self) -> Speed:
+        ...
+
+    def update_configuration(self, configuration: Configuration):
         ...
 
 
@@ -115,6 +121,9 @@ class GenericDeviceRaw(typing.Protocol):
     def speed(self) -> Speed:
         ...
 
+    def update_configuration(self, configuration: Configuration):
+        ...
+
 
 class GenericDeviceRawOptional(typing.Protocol):
     def __enter__(self) -> "GenericDeviceRawOptional":
@@ -147,6 +156,9 @@ class GenericDeviceRawOptional(typing.Protocol):
         ...
 
     def speed(self) -> Speed:
+        ...
+
+    def update_configuration(self, configuration: Configuration):
         ...
 
 

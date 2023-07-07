@@ -37,7 +37,7 @@ pub trait Usb: Sized {
     where
         IntoError: From<Self::Error> + Clone + Send + 'static;
 
-    fn next_with_timeout(&mut self, timeout: &std::time::Duration) -> Option<usb::BufferView>;
+    fn next_with_timeout(&self, timeout: &std::time::Duration) -> Option<usb::BufferView>;
 
     fn serial(&self) -> String;
 
