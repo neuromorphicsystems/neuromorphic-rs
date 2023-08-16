@@ -9,7 +9,7 @@ fn read() -> Result<(), neuromorphic_drivers::devices::prophesee_evk4::Error> {
         std::time::Duration::from_millis(100),
         error_flag.clone(),
     )?);
-    let mut device = neuromorphic_drivers::devices::prophesee_evk4::Device::open(
+    let device = neuromorphic_drivers::devices::prophesee_evk4::Device::open(
         &None,
         neuromorphic_drivers::devices::prophesee_evk4::Device::PROPERTIES.default_configuration,
         &neuromorphic_drivers::devices::prophesee_evk4::Device::DEFAULT_USB_CONFIGURATION,
