@@ -1,5 +1,6 @@
 [workspace]
 members = ["drivers", "python", "reflect", "types"]
+resolver = "2"
 
 [profile.release]
 lto = "fat"

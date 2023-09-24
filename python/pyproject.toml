@@ -36,3 +36,4 @@ extend_skip = "python/neuromorphic_drivers/generated"
 
 [project.scripts]
 neuromorphic-drivers-install-udev-rules = "neuromorphic_drivers:install_udev_rules"
+ndls = "neuromorphic_drivers:print_device_list"

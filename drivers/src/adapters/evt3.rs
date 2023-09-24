@@ -202,6 +202,7 @@ impl Adapter {
                         neuromorphic_types::TriggerPolarity::Falling
                     },
                 }),
+                #[allow(clippy::manual_range_patterns)]
                 0b1011 | 0b1100 | 0b1101 | 0b1110 | 0b1111 => (),
                 _ => (),
             }

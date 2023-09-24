@@ -541,6 +541,9 @@ macro_rules! generate {
                                 "    def serial(self) -> str:\n",
                                 "        ...\n",
                                 "\n",
+                                "    def chip_firmware_configuration(self) -> Configuration:\n",
+                                "        ...\n",
+                                "\n",
                                 "    def speed(self) -> enums.Speed:\n",
                                 "        ...\n",
                                 "\n",
@@ -572,7 +575,8 @@ macro_rules! generate {
                 concat!(
                     "import typing\n",
                     "\n",
-                    "from . import enums",
+                    "from . import enums\n",
+                    "from .. import serde",
                 ),
             ).unwrap();
             $(
@@ -607,6 +611,29 @@ macro_rules! generate {
                     concat!(
                         "    if name == enums.Name.{}:\n",
                         "        return {}.Properties()",
+                    ),
+                    stringify!([<$module:upper>]),
+                    stringify!($module),
+                ).unwrap();
+            )+
+            writeln!(
+                writer,
+                "    raise Exception(f\"unknown name {{name}}\")",
+            ).unwrap();
+            writeln!(
+                writer,
+                concat!(
+                    "\n",
+                    "\n",
+                    "def deserialize_configuration(name: enums.Name, data: bytes) -> Configuration:",
+                ),
+            ).unwrap();
+            $(
+                writeln!(
+                    writer,
+                    concat!(
+                        "    if name == enums.Name.{}:\n",
+                        "        return serde.bincode.deserialize(data, {}.Configuration)[0]",
                     ),
                     stringify!([<$module:upper>]),
                     stringify!($module),
@@ -686,6 +713,9 @@ macro_rules! generate {
                             "        ...\n",
                             "\n",
                             "    def serial(self) -> str:\n",
+                            "        ...\n",
+                            "\n",
+                            "    def chip_firmware_configuration(self) -> Configuration:\n",
                             "        ...\n",
                             "\n",
                             "    def speed(self) -> Speed:\n",

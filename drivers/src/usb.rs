@@ -9,6 +9,12 @@ pub struct Configuration {
     pub allow_dma: bool,
 }
 
+impl Configuration {
+    pub fn deserialize_bincode(data: &[u8]) -> bincode::Result<Configuration> {
+        bincode::deserialize(data)
+    }
+}
+
 #[derive(thiserror::Error, Debug, Clone)]
 pub enum Error {
     #[error("{0}")]
@@ -423,12 +429,12 @@ impl Ring {
         for _ in 0..configuration.ring_size {
             let dma_buffer = if configuration.allow_dma {
                 // unsafe: libusb wrapper
-                (unsafe {
+                unsafe {
                     libusb_dev_mem_alloc(
                         handle.as_raw(),
                         configuration.buffer_size as libc::ssize_t,
                     )
-                } as *mut u8)
+                }
             } else {
                 std::ptr::null_mut()
             };
@@ -496,7 +502,9 @@ impl Ring {
                         for transfer in transfers.iter_mut().take(index) {
                             // unsafe: transfer is allocated and user_data is an allocated *mut TransferContext
                             unsafe {
-                                Box::from_raw((transfer.as_mut()).user_data as *mut TransferContext)
+                                let _ = Box::from_raw(
+                                    (transfer.as_mut()).user_data as *mut TransferContext,
+                                );
                             };
                             // unsafe: transfer is allocated
                             unsafe { libusb1_sys::libusb_free_transfer(transfer.as_ptr()) };

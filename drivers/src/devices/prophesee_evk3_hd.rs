@@ -375,6 +375,10 @@ impl device::Usb for Device {
         self.serial.clone()
     }
 
+    fn chip_firmware_configuration(&self) -> Self::Configuration {
+        Self::PROPERTIES.default_configuration.clone()
+    }
+
     fn speed(&self) -> usb::Speed {
         self.handle.device().speed().into()
     }

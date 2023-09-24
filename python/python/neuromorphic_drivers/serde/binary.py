@@ -4,6 +4,7 @@ import dataclasses
 import enum
 import inspect
 import io
+import itertools
 import typing
 
 import numpy
@@ -413,5 +414,17 @@ class Deserializer:
                 new_type = obj_type.VARIANTS[variant_index]
                 return self.deserialize_any(new_type)
 
+            # handle enum
+            elif issubclass(obj_type, enum.Enum):
+                variant_index = self.deserialize_variant_index()
+                if variant_index not in range(len(obj_type.__members__)):
+                    raise type.DeserializationError(
+                        "Unexpected variant index", variant_index
+                    )
+                return next(
+                    itertools.islice(
+                        obj_type.__members__.values(), variant_index, variant_index + 1
+                    )
+                )
             else:
                 raise type.DeserializationError("Unexpected type", obj_type)

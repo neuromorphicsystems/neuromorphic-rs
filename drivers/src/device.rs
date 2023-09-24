@@ -41,6 +41,8 @@ pub trait Usb: Sized {
 
     fn serial(&self) -> String;
 
+    fn chip_firmware_configuration(&self) -> Self::Configuration;
+
     fn speed(&self) -> usb::Speed;
 
     fn adapter(&self) -> Self::Adapter;

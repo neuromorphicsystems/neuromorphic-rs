@@ -49,6 +49,14 @@ macro_rules! register {
             }
 
             impl Configuration {
+                pub fn serialize_bincode(&self) -> bincode::Result<Vec<u8>> {
+                    match self {
+                        $(
+                            Configuration::[<$module:camel>](configuration) => bincode::serialize(configuration),
+                        )+
+                    }
+                }
+
                 pub fn deserialize_bincode(
                     device_type: Type,
                     data: &[u8]
@@ -201,6 +209,14 @@ macro_rules! register {
                     match self {
                         $(
                             Self::[<$module:camel>](device) => device.serial(),
+                        )+
+                    }
+                }
+
+                pub fn chip_firmware_configuration(&self) -> Configuration {
+                    match self {
+                        $(
+                            Self::[<$module:camel>](device) => Configuration::[<$module:camel>](device.chip_firmware_configuration()),
                         )+
                     }
                 }

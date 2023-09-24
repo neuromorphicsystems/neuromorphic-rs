@@ -10,6 +10,12 @@ class Device(ExtensionDevice):
     def name(self):
         return enums.Name(super().name())
 
+    def chip_firmware_configuration(self):
+        return unions.deserialize_configuration(
+            self.name(),
+            super().chip_firmware_configuration(),
+        )
+
     def speed(self):
         return enums.Speed(super().speed())
 

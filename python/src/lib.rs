@@ -92,7 +92,7 @@ impl Device {
             },
             if let Some(usb_configuration) = usb_configuration {
                 Some(
-                    bincode::deserialize::<neuromorphic_drivers_rs::UsbConfiguration>(
+                    neuromorphic_drivers_rs::UsbConfiguration::deserialize_bincode(
                         usb_configuration,
                     )
                     .map_err(|error| {
@@ -183,7 +183,7 @@ impl Device {
                     )));
                 }
                 if let Some(buffer_view) = device.0.next_with_timeout(&buffer_timeout) {
-                    let mut current_status = status.get_or_insert(Status {
+                    let current_status = status.get_or_insert(Status {
                         system_time: buffer_view.system_time,
                         read_range: (buffer_view.read, buffer_view.read + 1),
                         write_range: buffer_view.write_range,
@@ -313,6 +313,24 @@ impl Device {
                 "serial called after __exit__",
             ))?
             .serial())
+    }
+
+    fn chip_firmware_configuration(
+        slf: pyo3::PyRef<Self>,
+        python: pyo3::Python,
+    ) -> pyo3::PyResult<pyo3::PyObject> {
+        Ok(pyo3::types::PyBytes::new(
+            python,
+            &slf.device
+                .as_ref()
+                .ok_or(pyo3::exceptions::PyRuntimeError::new_err(
+                    "serial called after __exit__",
+                ))?
+                .chip_firmware_configuration()
+                .serialize_bincode()
+                .map_err(|error| pyo3::exceptions::PyRuntimeError::new_err(format!("{error}")))?,
+        )
+        .into_py(python))
     }
 
     fn speed(slf: pyo3::PyRef<Self>) -> pyo3::PyResult<String> {

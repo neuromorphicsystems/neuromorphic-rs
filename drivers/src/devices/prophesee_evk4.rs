@@ -51,6 +51,7 @@ pub struct Device {
     ring: usb::Ring,
     configuration_updater: configuration::Updater<Configuration>,
     serial: String,
+    chip_firmware_configuration: Configuration,
 }
 
 #[derive(thiserror::Error, Debug, Clone)]
@@ -239,6 +240,24 @@ impl device::Usb for Device {
             TIMEOUT,
         )?; // psee,ccam5_imx636 psee,ccam5_gen42
 
+        // Read default biases
+        let mut chip_firmware_configuration = Self::PROPERTIES.default_configuration.clone();
+        chip_firmware_configuration.biases = Biases {
+            pr: BiasPr::read(&handle)?.idac_ctl as u8,
+            fo: BiasFo::read(&handle)?.idac_ctl as u8,
+            hpf: BiasHpf::read(&handle)?.idac_ctl as u8,
+            diff_on: BiasDiffOn::read(&handle)?.idac_ctl as u8,
+            diff: BiasDiff::read(&handle)?.idac_ctl as u8,
+            diff_off: BiasDiffOff::read(&handle)?.idac_ctl as u8,
+            inv: BiasInv::read(&handle)?.idac_ctl as u8,
+            refr: BiasRefr::read(&handle)?.idac_ctl as u8,
+            reqpuy: BiasReqpuy::read(&handle)?.idac_ctl as u8,
+            reqpux: BiasReqpux::read(&handle)?.idac_ctl as u8,
+            sendreqpdy: BiasSendreqpdy::read(&handle)?.idac_ctl as u8,
+            unknown_1: BiasUnknown1::read(&handle)?.idac_ctl as u8,
+            unknown_2: BiasUnknown2::read(&handle)?.idac_ctl as u8,
+        };
+
         // issd_evk3_imx636_stop in hal_psee_plugins/include/devices/imx636/imx636_evk3_issd.h {
         RoiCtrl {
             reserved_0_1: 0,
@@ -405,22 +424,82 @@ impl device::Usb for Device {
             single: 1,
         }
         .write(&handle)?;
-        RoFsmCtrl { value: 0x00000000 }.write(&handle)?;
+        RoFsmCtrl {
+            readout_wait: 0,
+            reserved_16_31: 0,
+        }
+        .write(&handle)?;
         std::thread::sleep(std::time::Duration::from_millis(1));
         ReadoutCtrl { value: 0x00000200 }.write(&handle)?;
         // }
 
+        // Temperature
         AdcControl { value: 0x00007641 }.write(&handle)?;
         AdcControl { value: 0x00007643 }.write(&handle)?;
         AdcMiscCtrl { value: 0x00000212 }.write(&handle)?;
         TempCtrl { value: 0x00200082 }.write(&handle)?;
         TempCtrl { value: 0x00200083 }.write(&handle)?;
         AdcControl { value: 0x00007641 }.write(&handle)?;
+
+        // Global illuminance
         IphMirrCtrl { value: 0x00000003 }.write(&handle)?;
         IphMirrCtrl { value: 0x00000003 }.write(&handle)?;
         LifoCtrl { value: 0x00000001 }.write(&handle)?;
         LifoCtrl { value: 0x00000003 }.write(&handle)?;
         LifoCtrl { value: 0x00000007 }.write(&handle)?;
+
+        // Anti-flicker (AFK)
+        AfkPeriod {
+            min_cutoff_period: 15,
+            max_cutoff_period: 156,
+            inverted_duty_cycle: 8,
+        }
+        .write(&handle)?;
+        AfkPipelineControl {
+            reserved_0_2: 1,
+            bypass: 1,
+        }
+        .write(&handle)?;
+
+        // Burst filters
+        // Spatio Temporal Contrast filter (STC)
+        // Trail filter (TRAIL)
+        StcTimestamping {
+            prescaler: 13,
+            multiplier: 1,
+            reserved_9_16: 1,
+            reset_refractory_period_on_event: 0,
+        }
+        .write(&handle)?;
+        StcParam {
+            enable: 0,
+            threshold: 1480,
+            reserved_20_24: 0,
+            disable_cut_trail: 1,
+        }
+        .write(&handle)?;
+        TrailParam {
+            enable: 0,
+            threshold: 100000,
+        }
+        .write(&handle)?;
+        BurstPipelineInvalidation {
+            dt_fifo_wait_time: 4,
+            dt_fifo_timeout: 280,
+            reserved_24_29: 10,
+        }
+        .write(&handle)?;
+        BurstPipelineInitialization {
+            force_sram_initialization: 0,
+            reserved_1_2: 0,
+            clear_flag: 0,
+        }
+        .write(&handle)?;
+        BurstPipelineControl {
+            reserved_0_2: 1,
+            bypass: 1,
+        }
+        .write(&handle)?;
 
         // Event Rate Controler (ERC)
         ErcReserved6000 { value: 0x00155400 }.write(&handle)?;
@@ -622,6 +701,7 @@ impl device::Usb for Device {
                 },
             ),
             serial,
+            chip_firmware_configuration,
         })
     }
 
@@ -631,6 +711,10 @@ impl device::Usb for Device {
 
     fn serial(&self) -> String {
         self.serial.clone()
+    }
+
+    fn chip_firmware_configuration(&self) -> Self::Configuration {
+        self.chip_firmware_configuration.clone()
     }
 
     fn speed(&self) -> usb::Speed {
@@ -912,41 +996,6 @@ trait Register {
 
     fn offset(&self, registers: u32) -> RuntimeRegister;
 
-    fn read(&self, handle: &rusb::DeviceHandle<rusb::Context>) -> Result<u32, Error> {
-        let address = self.address();
-        let buffer = [
-            0x02,
-            0x01,
-            0x01,
-            0x00,
-            0x0c,
-            0x00,
-            0x00,
-            0x00,
-            0x00,
-            0x00,
-            0x00,
-            0x00,
-            (address & 0xff) as u8,
-            ((address >> 8) & 0xff) as u8,
-            ((address >> 16) & 0xff) as u8,
-            ((address >> 24) & 0xff) as u8,
-            0x01,
-            0x00,
-            0x00,
-            0x00,
-        ];
-        let result = request(handle, &buffer, TIMEOUT)?;
-        if result.len() != buffer.len() {
-            return Err(Error::RegisterReadShortResponse(address));
-        }
-        if result[0..16] != buffer[0..16] {
-            return Err(Error::RegisterReadMismatch(address));
-        }
-        // unwrap: slice has the right number of bytes
-        Ok(u32::from_le_bytes(result[16..20].try_into().unwrap()))
-    }
-
     fn write(&self, handle: &rusb::DeviceHandle<rusb::Context>) -> Result<(), Error> {
         let address = self.address();
         let value = self.value();
@@ -1021,6 +1070,47 @@ macro_rules! register {
                     address: $address + registers * 4,
                     value: self.value(),
                 }
+            }
+        }
+        impl $name {
+            #[allow(dead_code)]
+            fn read(handle: &rusb::DeviceHandle<rusb::Context>) -> Result<Self, Error> {
+                let buffer = [
+                    0x02,
+                    0x01,
+                    0x01,
+                    0x00,
+                    0x0c,
+                    0x00,
+                    0x00,
+                    0x00,
+                    0x00,
+                    0x00,
+                    0x00,
+                    0x00,
+                    ($address & 0xff) as u8,
+                    (($address >> 8) & 0xff) as u8,
+                    (($address >> 16) & 0xff) as u8,
+                    (($address >> 24) & 0xff) as u8,
+                    0x01,
+                    0x00,
+                    0x00,
+                    0x00,
+                ];
+                let result = request(handle, &buffer, TIMEOUT)?;
+                if result.len() != buffer.len() {
+                    return Err(Error::RegisterReadShortResponse($address));
+                }
+                if result[0..16] != buffer[0..16] {
+                    return Err(Error::RegisterReadMismatch($address));
+                }
+                // unwrap: slice has the right number of bytes
+                let value = u32::from_le_bytes(result[16..20].try_into().unwrap());
+                Ok(Self {
+                    $(
+                        $subname: (value >> $substart) & (((1u64 << ($subend - $substart)) - 1) as u32),
+                    )+
+                })
             }
         }
     };
@@ -1280,7 +1370,10 @@ register! { EdfReserved7004, 0x7004, {
 register! { Unknown7008, 0x7008, { value: 0..32 } }
 register! { Unknown8000, 0x8000, { value: 0..32 } }
 register! { ReadoutCtrl, 0x9000, { value: 0..32 } }
-register! { RoFsmCtrl, 0x9004, { value: 0..32 } }
+register! { RoFsmCtrl, 0x9004, {
+    readout_wait: 0..16,
+    reserved_16_31: 16..32,
+} }
 register! { TimeBaseCtrl, 0x9008, {
     enable: 0..1,
     external: 1..2,
@@ -1420,17 +1513,48 @@ register! { UnknownB0AC, 0xB0AC, { value: 0..32 } }
 register! { UnknownB0C8, 0xB0C8, { value: 0..32 } }
 register! { UnknownB0CC, 0xB0CC, { value: 0..32 } }
 register! { UnknownB120, 0xB120, { value: 0..32 } }
-register! { AfkPipelineControl, 0xC000, { value: 0..32 } }
+register! { AfkPipelineControl, 0xC000, {
+    reserved_0_2: 0..2,
+    bypass: 2..3,
+} }
 register! { ReservedC004, 0xC004, { value: 0..32 } }
-register! { FilterPeriod, 0xC008, { value: 0..32 } }
+register! { AfkPeriod, 0xC008, {
+    min_cutoff_period: 0..8,
+    max_cutoff_period: 8..16,
+    inverted_duty_cycle: 16..20,
+} }
 register! { Invalidation, 0xC0C0, { value: 0..32 } }
 register! { AfkInitialization, 0xC0C4, { value: 0..32 } }
-register! { StcPipelineControl, 0xD000, { value: 0..32 } }
-register! { StcParam, 0xD004, { value: 0..32 } }
-register! { TrailParam, 0xD008, { value: 0..32 } }
-register! { Timestamping, 0xD00C, { value: 0..32 } }
-register! { ReservedD0c0, 0xD0C0, { value: 0..32 } }
-register! { StcInitialization, 0xD0C4, { value: 0..32 } }
+register! { BurstPipelineControl, 0xD000, {
+    reserved_0_2: 0..2,
+    bypass: 2..3,
+} }
+register! { StcParam, 0xD004, {
+    enable: 0..1,
+    threshold: 1..20,
+    reserved_20_24: 20..24,
+    disable_cut_trail: 24..25,
+} }
+register! { TrailParam, 0xD008, {
+    enable: 0..1,
+    threshold: 1..20,
+} }
+register! { StcTimestamping, 0xD00C, {
+    prescaler: 0..5,
+    multiplier: 5..9,
+    reserved_9_16: 9..16,
+    reset_refractory_period_on_event: 16..17,
+} }
+register! { BurstPipelineInvalidation, 0xD0C0, {
+    dt_fifo_wait_time: 0..12,
+    dt_fifo_timeout: 12..24,
+    reserved_24_29: 24..29,
+} }
+register! { BurstPipelineInitialization, 0xD0C4, {
+    force_sram_initialization: 0..1,
+    reserved_1_2: 1..2,
+    clear_flag: 2..3,
+} }
 register! { SlvsControl, 0xE000, { value: 0..32 } }
 register! { SlvsPacketSize, 0xE020, { value: 0..32 } }
 register! { SlvsPacketTimeout, 0xE024, { value: 0..32 } }

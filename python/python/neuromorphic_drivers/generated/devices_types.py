@@ -44,6 +44,9 @@ class GenericDevice(typing.Protocol):
     def serial(self) -> str:
         ...
 
+    def chip_firmware_configuration(self) -> Configuration:
+        ...
+
     def speed(self) -> Speed:
         ...
 
@@ -79,6 +82,9 @@ class GenericDeviceOptional(typing.Protocol):
         ...
 
     def serial(self) -> str:
+        ...
+
+    def chip_firmware_configuration(self) -> Configuration:
         ...
 
     def speed(self) -> Speed:
@@ -118,6 +124,9 @@ class GenericDeviceRaw(typing.Protocol):
     def serial(self) -> str:
         ...
 
+    def chip_firmware_configuration(self) -> Configuration:
+        ...
+
     def speed(self) -> Speed:
         ...
 
@@ -153,6 +162,9 @@ class GenericDeviceRawOptional(typing.Protocol):
         ...
 
     def serial(self) -> str:
+        ...
+
+    def chip_firmware_configuration(self) -> Configuration:
         ...
 
     def speed(self) -> Speed:

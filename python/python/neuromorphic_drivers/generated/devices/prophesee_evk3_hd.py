@@ -135,6 +135,9 @@ class Device(typing.Protocol):
     def serial(self) -> str:
         ...
 
+    def chip_firmware_configuration(self) -> Configuration:
+        ...
+
     def speed(self) -> enums.Speed:
         ...
 
@@ -170,6 +173,9 @@ class DeviceOptional(typing.Protocol):
         ...
 
     def serial(self) -> str:
+        ...
+
+    def chip_firmware_configuration(self) -> Configuration:
         ...
 
     def speed(self) -> enums.Speed:
@@ -209,6 +215,9 @@ class DeviceRaw(typing.Protocol):
     def serial(self) -> str:
         ...
 
+    def chip_firmware_configuration(self) -> Configuration:
+        ...
+
     def speed(self) -> enums.Speed:
         ...
 
@@ -244,6 +253,9 @@ class DeviceRawOptional(typing.Protocol):
         ...
 
     def serial(self) -> str:
+        ...
+
+    def chip_firmware_configuration(self) -> Configuration:
         ...
 
     def speed(self) -> enums.Speed:
