@@ -162,9 +162,11 @@ class UsbConfiguration:
 
 ## More examples
 
-See _python/tests_ for different usage examples. `python/tests/display.py` implements a live event viewer with exponential decays caculated by the GPU. It requires vispy and glfw (`pip install vispy glfw`).
+See _python/examples_ for different usage examples.
 
-Some tests generate plots and require Plotly (`pip install plotly pandas kaleido`).
+_python/examples/any_display.py_ implements a live event viewer with exponential decays caculated by the GPU. It requires vispy and glfw (`pip install vispy glfw`).
+
+_python/examples/evk4_plot_hot_pixels_ generates plots and require Plotly (`pip install plotly pandas kaleido`).
 
 ## Contribute
 

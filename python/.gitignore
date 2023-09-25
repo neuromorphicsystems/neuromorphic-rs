@@ -3,4 +3,5 @@ tests/*.raw
 *.so
 *.pyd
 __pycache__
-tests/hot_pixels
+examples/hot_pixels/
+examples/*.png

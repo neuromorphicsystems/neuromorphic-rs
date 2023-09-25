@@ -89,6 +89,29 @@ class Configuration:
         serde.type.uint64,
         serde.type.uint64,
     ] = (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+    pixel_mask: tuple[
+        serde.type.uint64,
+        serde.type.uint64,
+        serde.type.uint64,
+        serde.type.uint64,
+        serde.type.uint64,
+        serde.type.uint64,
+        serde.type.uint64,
+        serde.type.uint64,
+        serde.type.uint64,
+        serde.type.uint64,
+        serde.type.uint64,
+        serde.type.uint64,
+        serde.type.uint64,
+        serde.type.uint64,
+        serde.type.uint64,
+        serde.type.uint64,
+        serde.type.uint64,
+        serde.type.uint64,
+        serde.type.uint64,
+        serde.type.uint64,
+        serde.type.uint64,
+    ] = (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
     mask_intersection_only: bool = False
     enable_external_trigger: bool = True
     clock: Clock = Clock.INTERNAL

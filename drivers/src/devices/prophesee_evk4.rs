@@ -40,6 +40,7 @@ pub struct Configuration {
     pub biases: Biases,
     pub x_mask: [u64; 20],
     pub y_mask: [u64; 12],
+    pub pixel_mask: [u64; 21],
     pub mask_intersection_only: bool,
     pub enable_external_trigger: bool,
     pub clock: Clock,
@@ -67,6 +68,9 @@ pub enum Error {
 
     #[error("bytes mismatch while reading register {0}")]
     RegisterReadMismatch(u32),
+
+    #[error("unsupported mask code ({code}) for pixel mask {offset}")]
+    PixelMask { code: u32, offset: u32 },
 }
 
 impl From<rusb::Error> for Error {
@@ -110,6 +114,7 @@ impl device::Usb for Device {
             },
             x_mask: [0; 20],
             y_mask: [0; 12],
+            pixel_mask: [0; 21],
             mask_intersection_only: false,
             enable_external_trigger: true,
             clock: Clock::Internal,
@@ -973,6 +978,51 @@ fn update_configuration(
         }
         .write(handle)?;
     }
+    if match previous_configuration {
+        Some(previous_configuration) => {
+            previous_configuration.pixel_mask != configuration.pixel_mask
+        }
+        None => true,
+    } {
+        for offset in 0u32..64u32 {
+            let code = if offset < 63 {
+                (((configuration.pixel_mask[(offset / 3) as usize]) >> ((offset % 3) * 21))
+                    & 0x1fffff) as u32
+            } else {
+                let mut code: u32 = 0;
+                for bit in 0..21 {
+                    code |= ((configuration.pixel_mask[bit] >> 63) << bit) as u32;
+                }
+                code
+            };
+            if code == 0 {
+                DigitalMask {
+                    x: 0,
+                    reserved_11_16: 0,
+                    y: 0,
+                    reserved_26_31: 0,
+                    enable: 0,
+                }
+                .offset(offset)
+                .write(handle)?;
+            } else {
+                let x = (code - 1) % 1280;
+                let y = 720 - 1 - (code - 1) / 1280;
+                if x >= 1280 || y >= 720 {
+                    return Err(Error::PixelMask { code, offset });
+                }
+                DigitalMask {
+                    x,
+                    reserved_11_16: 0,
+                    y,
+                    reserved_26_31: 0,
+                    enable: 1,
+                }
+                .offset(offset)
+                .write(handle)?;
+            }
+        }
+    }
     Ok(())
 }
 
@@ -1397,70 +1447,13 @@ register! { AreaY3Addr, 0x904C, { value: 0..32 } }
 register! { AreaY4Addr, 0x9050, { value: 0..32 } }
 register! { CounterCtrl, 0x9054, { value: 0..32 } }
 register! { CounterTimerThreshold, 0x9058, { value: 0..32 } }
-register! { DigitalMaskPixel00, 0x9100, { value: 0..32 } }
-register! { DigitalMaskPixel01, 0x9104, { value: 0..32 } }
-register! { DigitalMaskPixel02, 0x9108, { value: 0..32 } }
-register! { DigitalMaskPixel03, 0x910C, { value: 0..32 } }
-register! { DigitalMaskPixel04, 0x9110, { value: 0..32 } }
-register! { DigitalMaskPixel05, 0x9114, { value: 0..32 } }
-register! { DigitalMaskPixel06, 0x9118, { value: 0..32 } }
-register! { DigitalMaskPixel07, 0x911C, { value: 0..32 } }
-register! { DigitalMaskPixel08, 0x9120, { value: 0..32 } }
-register! { DigitalMaskPixel09, 0x9124, { value: 0..32 } }
-register! { DigitalMaskPixel10, 0x9128, { value: 0..32 } }
-register! { DigitalMaskPixel11, 0x912C, { value: 0..32 } }
-register! { DigitalMaskPixel12, 0x9130, { value: 0..32 } }
-register! { DigitalMaskPixel13, 0x9134, { value: 0..32 } }
-register! { DigitalMaskPixel14, 0x9138, { value: 0..32 } }
-register! { DigitalMaskPixel15, 0x913C, { value: 0..32 } }
-register! { DigitalMaskPixel16, 0x9140, { value: 0..32 } }
-register! { DigitalMaskPixel17, 0x9144, { value: 0..32 } }
-register! { DigitalMaskPixel18, 0x9148, { value: 0..32 } }
-register! { DigitalMaskPixel19, 0x914C, { value: 0..32 } }
-register! { DigitalMaskPixel20, 0x9150, { value: 0..32 } }
-register! { DigitalMaskPixel21, 0x9154, { value: 0..32 } }
-register! { DigitalMaskPixel22, 0x9158, { value: 0..32 } }
-register! { DigitalMaskPixel23, 0x915C, { value: 0..32 } }
-register! { DigitalMaskPixel24, 0x9160, { value: 0..32 } }
-register! { DigitalMaskPixel25, 0x9164, { value: 0..32 } }
-register! { DigitalMaskPixel26, 0x9168, { value: 0..32 } }
-register! { DigitalMaskPixel27, 0x916C, { value: 0..32 } }
-register! { DigitalMaskPixel28, 0x9170, { value: 0..32 } }
-register! { DigitalMaskPixel29, 0x9174, { value: 0..32 } }
-register! { DigitalMaskPixel30, 0x9178, { value: 0..32 } }
-register! { DigitalMaskPixel31, 0x917C, { value: 0..32 } }
-register! { DigitalMaskPixel32, 0x9180, { value: 0..32 } }
-register! { DigitalMaskPixel33, 0x9184, { value: 0..32 } }
-register! { DigitalMaskPixel34, 0x9188, { value: 0..32 } }
-register! { DigitalMaskPixel35, 0x918C, { value: 0..32 } }
-register! { DigitalMaskPixel36, 0x9190, { value: 0..32 } }
-register! { DigitalMaskPixel37, 0x9194, { value: 0..32 } }
-register! { DigitalMaskPixel38, 0x9198, { value: 0..32 } }
-register! { DigitalMaskPixel39, 0x919C, { value: 0..32 } }
-register! { DigitalMaskPixel40, 0x91A0, { value: 0..32 } }
-register! { DigitalMaskPixel41, 0x91A4, { value: 0..32 } }
-register! { DigitalMaskPixel42, 0x91A8, { value: 0..32 } }
-register! { DigitalMaskPixel43, 0x91AC, { value: 0..32 } }
-register! { DigitalMaskPixel44, 0x91B0, { value: 0..32 } }
-register! { DigitalMaskPixel45, 0x91B4, { value: 0..32 } }
-register! { DigitalMaskPixel46, 0x91B8, { value: 0..32 } }
-register! { DigitalMaskPixel47, 0x91BC, { value: 0..32 } }
-register! { DigitalMaskPixel48, 0x91C0, { value: 0..32 } }
-register! { DigitalMaskPixel49, 0x91C4, { value: 0..32 } }
-register! { DigitalMaskPixel50, 0x91C8, { value: 0..32 } }
-register! { DigitalMaskPixel51, 0x91CC, { value: 0..32 } }
-register! { DigitalMaskPixel52, 0x91D0, { value: 0..32 } }
-register! { DigitalMaskPixel53, 0x91D4, { value: 0..32 } }
-register! { DigitalMaskPixel54, 0x91D8, { value: 0..32 } }
-register! { DigitalMaskPixel55, 0x91DC, { value: 0..32 } }
-register! { DigitalMaskPixel56, 0x91E0, { value: 0..32 } }
-register! { DigitalMaskPixel57, 0x91E4, { value: 0..32 } }
-register! { DigitalMaskPixel58, 0x91E8, { value: 0..32 } }
-register! { DigitalMaskPixel59, 0x91EC, { value: 0..32 } }
-register! { DigitalMaskPixel60, 0x91F0, { value: 0..32 } }
-register! { DigitalMaskPixel61, 0x91F4, { value: 0..32 } }
-register! { DigitalMaskPixel62, 0x91F8, { value: 0..32 } }
-register! { DigitalMaskPixel63, 0x91FC, { value: 0..32 } }
+register! { DigitalMask, 0x9100, {
+    x: 0..11,
+    reserved_11_16: 11..16,
+    y: 16..26,
+    reserved_26_31: 26..31,
+    enable: 31..32,
+} }
 register! { AreaCnt00, 0x9200, { value: 0..32 } }
 register! { AreaCnt01, 0x9204, { value: 0..32 } }
 register! { AreaCnt02, 0x9208, { value: 0..32 } }

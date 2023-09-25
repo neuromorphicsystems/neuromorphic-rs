@@ -146,7 +146,7 @@ class Canvas(vispy.app.Canvas):
             1,
         )
         vispy.gloo.set_clear_color("#292929")
-        self.timer = vispy.app.Timer(FRAME_DURATION, connect=self.update, start=True)
+        self.timer = vispy.app.Timer(FRAME_DURATION, connect=self.update, start=True)  # type: ignore
         self.show()
 
     def on_resize(self, event):

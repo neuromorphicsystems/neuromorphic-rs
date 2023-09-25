@@ -65,7 +65,7 @@ with nd.open(configuration=nd.prophesee_evk4.Configuration()) as device:
 
 
 for diff_off, counts in diff_off_to_counts.items():
-    log_counts = np.log((counts + 1).astype(np.float64)).transpose()
+    log_counts = np.flipud(np.log((counts + 1).astype(np.float64)).transpose())
     figure = plotly.express.imshow(log_counts, color_continuous_scale="thermal")
     figure.update_layout(
         width=1280,
