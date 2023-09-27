@@ -116,6 +116,7 @@ class Configuration:
     enable_external_trigger: bool = True
     clock: Clock = Clock.INTERNAL
     rate_limiter: typing.Optional[RateLimiter] = None
+    enable_output: bool = True
 
     def serialize(self) -> bytes:
         return serde.bincode.serialize(self, Configuration)
