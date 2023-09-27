@@ -45,6 +45,7 @@ pub struct Configuration {
     pub enable_external_trigger: bool,
     pub clock: Clock,
     pub rate_limiter: Option<RateLimiter>,
+    pub enable_output: bool,
 }
 
 pub struct Device {
@@ -119,6 +120,7 @@ impl device::Usb for Device {
             enable_external_trigger: true,
             clock: Clock::Internal,
             rate_limiter: None,
+            enable_output: true,
         },
     };
 
@@ -276,7 +278,11 @@ impl device::Usb for Device {
         }
         .write(&handle)?;
         Unknown002C { value: 0x0022c324 }.write(&handle)?;
-        RoCtrl { value: 0x00000002 }.write(&handle)?;
+        RoCtrl {
+            area_count_enable: 0,
+            output_disable: 1,
+            keep_timer_high: 0,
+        }.write(&handle)?;
         std::thread::sleep(std::time::Duration::from_millis(1));
         TimeBaseCtrl {
             enable: 0,
@@ -607,7 +613,13 @@ impl device::Usb for Device {
 
         // issd_evk3_imx636_start in hal_psee_plugins/include/devices/imx636/imx636_evk3_issd.h {
         MipiControl { value: 0x000002f9 }.write(&handle)?;
-        RoCtrl { value: 0x00000000 }.write(&handle)?;
+        if configuration.enable_output {
+            RoCtrl {
+                area_count_enable: 0,
+                output_disable: 0,
+                keep_timer_high: 0,
+            }.write(&handle)?;
+        }
         match configuration.clock {
             Clock::Internal => {
                 TimeBaseCtrl {
@@ -746,7 +758,11 @@ impl Drop for Device {
         }
         .write(&self.handle);
         let _ = Unknown002C { value: 0x0022c324 }.write(&self.handle);
-        let _ = RoCtrl { value: 0x00000002 }.write(&self.handle);
+        let _ = RoCtrl {
+            area_count_enable: 0,
+            output_disable: 1,
+            keep_timer_high: 0,
+        }.write(&self.handle);
         std::thread::sleep(std::time::Duration::from_millis(1));
         let _ = TimeBaseCtrl {
             enable: 0,
@@ -841,6 +857,18 @@ fn update_configuration(
     previous_configuration: Option<&Configuration>,
     configuration: &Configuration,
 ) -> Result<(), Error> {
+    if match previous_configuration {
+        Some(previous_configuration) => {
+            previous_configuration.enable_output != configuration.enable_output
+        }
+        None => false,
+    } {
+        RoCtrl {
+            area_count_enable: 0,
+            output_disable: if configuration.enable_output { 0 } else { 1 },
+            keep_timer_high: 0,
+        }.write(handle)?;
+    }
     {
         let previous_biases = previous_configuration.map(|configuration| &configuration.biases);
         update_bias!(pr, BiasPr, handle, previous_biases, configuration.biases);
@@ -1434,7 +1462,11 @@ register! { TimeBaseCtrl, 0x9008, {
 register! { DigCtrl, 0x900C, { value: 0..32 } }
 register! { DigStartPos, 0x9010, { value: 0..32 } }
 register! { DigEndPos, 0x9014, { value: 0..32 } }
-register! { RoCtrl, 0x9028, { value: 0..32 } }
+register! { RoCtrl, 0x9028, {
+    area_count_enable: 0..1,
+    output_disable: 1..2,
+    keep_timer_high: 2..3,
+} }
 register! { AreaX0Addr, 0x902C, { value: 0..32 } }
 register! { AreaX1Addr, 0x9030, { value: 0..32 } }
 register! { AreaX2Addr, 0x9034, { value: 0..32 } }

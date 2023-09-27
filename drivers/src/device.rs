@@ -21,8 +21,9 @@ pub trait Usb: Sized {
 
     const DEFAULT_USB_CONFIGURATION: usb::Configuration;
 
-    // read_serial must claim bulk transfer interface(s)
-    // this is required even if read_serial does not use bulk transfers
+    /// read_serial must claim bulk transfer interface(s).
+    ///
+    /// This is required even if read_serial does not use bulk transfers.
     fn read_serial(handle: &mut rusb::DeviceHandle<rusb::Context>) -> rusb::Result<String>;
 
     fn update_configuration(&self, configuration: Self::Configuration);
