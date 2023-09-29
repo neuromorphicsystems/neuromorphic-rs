@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import io
 import struct
 import typing
@@ -55,7 +57,9 @@ class BincodeDeserializer(binary.Deserializer):
         return int.from_bytes(self.read(4), byteorder="little", signed=False)
 
     def check_that_key_slices_are_increasing(
-        self, slice1: typing.Tuple[int, int], slice2: typing.Tuple[int, int]
+        self,
+        slice1: tuple[int, int],
+        slice2: tuple[int, int],
     ):
         pass
 
@@ -66,7 +70,7 @@ def serialize(obj: typing.Any, obj_type) -> bytes:
     return serializer.get_buffer()
 
 
-def deserialize(content: bytes, obj_type) -> typing.Tuple[typing.Any, bytes]:
+def deserialize(content: bytes, obj_type) -> tuple[typing.Any, bytes]:
     deserializer = BincodeDeserializer(content)
     value = deserializer.deserialize_any(obj_type)
     return value, deserializer.get_remaining_buffer()
