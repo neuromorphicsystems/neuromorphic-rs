@@ -35,9 +35,17 @@ This table lists fratures supported by this library. Some devices support unlist
 
 ## Get started
 
-`python3 -m pip install neuromorphic_drivers`
+```sh
+pip install neuromorphic_drivers
+```
 
-On Linux, run `neuromorphic-drivers-install-udev-rules` after installing the package to install UDEV rules.
+On Linux, run the following comman after installing the package to install UDEV rules.
+
+```sh
+neuromorphic-drivers-install-udev-rules
+```
+
+The following script reads data from a connected device.
 
 ```py
 import neuromorphic_drivers as nd

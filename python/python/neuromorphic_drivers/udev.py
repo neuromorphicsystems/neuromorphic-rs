@@ -45,8 +45,8 @@ def install_udev_rules(
                 )
             )
         )
-    subprocess.check_call("udevadm control --reload-rules")
-    subprocess.check_call("udevadm trigger")
+    subprocess.check_call(["udevadm", "control", "--reload-rules"])
+    subprocess.check_call(["udevadm", "trigger"])
 
 
 def install_udev_rules_program():
