@@ -27,11 +27,15 @@ def install_udev_rules(
         if os.geteuid() != 0:
             cwd = pathlib.Path.cwd()
             executable = pathlib.Path(sys.executable).resolve()
-            if executable.is_relative_to(cwd):
+            try:
                 executable = executable.relative_to(cwd)
+            except ValueError:
+                pass
             file = pathlib.Path(__file__).resolve()
-            if file.is_relative_to(cwd):
+            try:
                 file = file.relative_to(cwd)
+            except ValueError:
+                pass
             sys.stdout.write(
                 f"\033[1mrun the following command to enable non-root access to devices\033[0m\n\nsudo {executable} {file}\n\n"
             )
