@@ -17,7 +17,7 @@ repository = "https://github.com/neuromorphicsystems/neuromorphic-rs/"
 documentation = "https://github.com/neuromorphicsystems/neuromorphic-rs/"
 
 [build-system]
-requires = ["maturin>=0.12", "numpy"]
+requires = ["maturin==1.2.3", "numpy"]
 build-backend = "maturin"
 
 [tool.maturin]
