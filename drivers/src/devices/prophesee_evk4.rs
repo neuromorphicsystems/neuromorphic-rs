@@ -58,7 +58,7 @@ pub struct Device {
 
 #[derive(thiserror::Error, Debug, Clone)]
 pub enum Error {
-    #[error("{0}")]
+    #[error(transparent)]
     Usb(#[from] usb::Error),
 
     #[error("short write ({requested} bytes requested, {written} bytes written)")]

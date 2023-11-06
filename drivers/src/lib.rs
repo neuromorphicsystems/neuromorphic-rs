@@ -15,4 +15,9 @@ pub use crate::devices::Error;
 pub use crate::devices::Properties;
 pub use crate::devices::Type;
 pub use crate::usb::Configuration as UsbConfiguration;
+
+pub use bincode;
+pub use libc;
+pub use libusb1_sys;
 pub use neuromorphic_types as types;
+pub use rusb;

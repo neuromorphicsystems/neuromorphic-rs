@@ -273,7 +273,7 @@ macro_rules! register {
 
             #[derive(thiserror::Error, Debug, Clone)]
             pub enum Error {
-                #[error("{0}")]
+                #[error(transparent)]
                 Usb(#[from] usb::Error),
 
                 #[error("{device_type} with serial \"{serial}\" not found")]
