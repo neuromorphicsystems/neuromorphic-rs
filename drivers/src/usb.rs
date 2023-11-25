@@ -123,7 +123,7 @@ impl BufferData {
 }
 
 struct Buffer {
-    system_time: std::time::SystemTime,
+    instant: std::time::Instant,
     data: BufferData,
     length: usize,
     capacity: usize,
@@ -256,7 +256,7 @@ struct TransferContext {
 
 #[no_mangle]
 extern "system" fn usb_transfer_callback(transfer_pointer: *mut libusb1_sys::libusb_transfer) {
-    let now = std::time::SystemTime::now();
+    let now = std::time::Instant::now();
     let mut resubmit = false;
     {
         // unsafe: transfer is not null (libusb callback)
@@ -282,7 +282,7 @@ extern "system" fn usb_transfer_callback(transfer_pointer: *mut libusb1_sys::lib
                                 TransferStatus::Complete;
                         } else {
                             let active_buffer = shared.write_range.0;
-                            shared.buffers[active_buffer].system_time = now;
+                            shared.buffers[active_buffer].instant = now;
                             shared.buffers[active_buffer].length = transfer.actual_length as usize;
                             transfer.buffer = shared.buffers[shared.write_range.1].data.as_ptr();
                             transfer.length = shared.buffers[shared.write_range.1].capacity as i32;
@@ -301,7 +301,7 @@ extern "system" fn usb_transfer_callback(transfer_pointer: *mut libusb1_sys::lib
                     | libusb1_sys::constants::LIBUSB_TRANSFER_OVERFLOW) => {
                         if shared.write_range.1 != shared.read {
                             let active_buffer = shared.write_range.0;
-                            shared.buffers[active_buffer].system_time = now;
+                            shared.buffers[active_buffer].instant = now;
                             shared.buffers[active_buffer].length = transfer.actual_length as usize;
                             shared.write_range.0 =
                                 (shared.write_range.0 + 1) % shared.buffers.len();
@@ -341,7 +341,7 @@ extern "system" fn usb_transfer_callback(transfer_pointer: *mut libusb1_sys::lib
                     | libusb1_sys::constants::LIBUSB_TRANSFER_NO_DEVICE => {
                         if shared.write_range.1 != shared.read {
                             let active_buffer = shared.write_range.0;
-                            shared.buffers[active_buffer].system_time = now;
+                            shared.buffers[active_buffer].instant = now;
                             shared.buffers[active_buffer].length = transfer.actual_length as usize;
                             shared.write_range.0 =
                                 (shared.write_range.0 + 1) % shared.buffers.len();
@@ -442,7 +442,7 @@ impl Ring {
             };
             if dma_buffer.is_null() {
                 buffers.push(Buffer {
-                    system_time: std::time::SystemTime::now(),
+                    instant: std::time::Instant::now(),
                     data: BufferData(
                         std::ptr::NonNull::new(
                             // unsafe: alloc wrapper
@@ -465,7 +465,7 @@ impl Ring {
                 });
             } else {
                 buffers.push(Buffer {
-                    system_time: std::time::SystemTime::now(),
+                    instant: std::time::Instant::now(),
                     // unsafe: dma_buffer is not null
                     data: BufferData(unsafe { std::ptr::NonNull::new_unchecked(dma_buffer) }),
                     length: 0,
@@ -660,7 +660,7 @@ impl Ring {
 }
 
 pub struct BufferView<'a> {
-    pub system_time: std::time::SystemTime,
+    pub instant: std::time::Instant,
     pub slice: &'a [u8],
     pub read: usize,
     pub write_range: (usize, usize),
@@ -674,9 +674,7 @@ impl BufferView<'_> {
     }
 
     pub fn delay(&self) -> std::time::Duration {
-        std::time::SystemTime::now()
-            .duration_since(self.system_time)
-            .unwrap_or_else(|_| std::time::Duration::default())
+        self.instant.elapsed()
     }
 }
 
@@ -695,7 +693,7 @@ impl Ring {
         {
             panic!("the buffer returned by a previous call of next_with_timeout must be dropped before calling next_with_timeout again");
         }
-        let (system_time, slice, read, write_range, ring_length) = {
+        let (instant, slice, read, write_range, ring_length) = {
             let start = std::time::Instant::now();
             let mut shared = self
                 .context
@@ -726,7 +724,7 @@ impl Ring {
                 }
             }
             (
-                shared.buffers[shared.read].system_time,
+                shared.buffers[shared.read].instant,
                 // unsafe: data validity guaranteed by read / write_range in shared
                 unsafe {
                     std::slice::from_raw_parts(
@@ -740,7 +738,7 @@ impl Ring {
             )
         };
         Some(BufferView {
-            system_time,
+            instant,
             slice,
             read,
             write_range,

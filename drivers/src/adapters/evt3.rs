@@ -195,7 +195,7 @@ impl Adapter {
                 0b1001 => (),
                 0b1010 => handle_trigger_event(neuromorphic_types::TriggerEvent {
                     t: self.t,
-                    id: ((word & 0b1111) >> 8) as u8,
+                    id: ((word >> 8) & 0b1111) as u8,
                     polarity: if (word & 1) > 0 {
                         neuromorphic_types::TriggerPolarity::Rising
                     } else {

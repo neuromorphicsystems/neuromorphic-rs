@@ -48,7 +48,7 @@ enum Buffer<'a> {
 unsafe impl Send for Buffer<'_> {}
 
 struct Status {
-    system_time: std::time::SystemTime,
+    instant: std::time::Instant,
     read_range: (usize, usize),
     write_range: (usize, usize),
     ring_length: usize,
@@ -184,7 +184,7 @@ impl Device {
                 }
                 if let Some(buffer_view) = device.0.next_with_timeout(&buffer_timeout) {
                     let current_status = status.get_or_insert(Status {
-                        system_time: buffer_view.system_time,
+                        instant: buffer_view.instant,
                         read_range: (buffer_view.read, buffer_view.read + 1),
                         write_range: buffer_view.write_range,
                         ring_length: buffer_view.ring_length,
@@ -223,18 +223,14 @@ impl Device {
                                 bytes.take(python).map(|bytes| bytes.into())
                             }),
                         };
+                        let duration_since_epoch = std::time::SystemTime::now()
+                            .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                            .unwrap_or(std::time::Duration::from_secs(0));
                         Ok((
-                            std::time::SystemTime::now()
-                                .duration_since(std::time::SystemTime::UNIX_EPOCH)
-                                .unwrap_or(std::time::Duration::from_secs(0))
-                                .as_secs_f64(),
+                            duration_since_epoch.as_secs_f64(),
                             status.map(|status| {
                                 (
-                                    status
-                                        .system_time
-                                        .duration_since(std::time::SystemTime::UNIX_EPOCH)
-                                        .unwrap_or(std::time::Duration::from_secs(0))
-                                        .as_secs_f64(),
+                                    (status.instant.elapsed() + duration_since_epoch).as_secs_f64(),
                                     status.read_range,
                                     status.write_range,
                                     status.ring_length,
