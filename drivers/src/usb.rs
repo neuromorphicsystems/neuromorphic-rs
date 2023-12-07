@@ -710,13 +710,14 @@ impl Ring {
                     if ellapsed >= *duration {
                         self.active_buffer_view
                             .store(false, std::sync::atomic::Ordering::Release);
+                        shared.read = (shared.read + shared.buffers.len() - 1) % shared.buffers.len();
                         return None;
                     }
                     shared = self
                         .context
                         .shared_condvar
                         .wait_timeout(shared, *duration - ellapsed)
-                        .expect("shared_condar used with two different mutexes")
+                        .expect("shared_condvar used with two different mutexes")
                         .0;
                 }
                 if shared.buffers[shared.read].length > 0 {
