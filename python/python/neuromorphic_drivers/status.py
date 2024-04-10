@@ -56,5 +56,4 @@ class StatusNonOptional:
     system_time: float
     ring: RingStatus
 
-    def delay(self) -> float:
-        ...
+    def delay(self) -> float: ...

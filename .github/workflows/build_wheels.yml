@@ -27,7 +27,7 @@ jobs:
         if: startsWith(matrix.os, 'macos')
       - run: rustup target add i686-pc-windows-msvc
         if: startsWith(matrix.os, 'windows')
-      - uses: pypa/cibuildwheel@v2.16.2
+      - uses: pypa/cibuildwheel@v2.17.0
         with:
           package-dir: python
       - uses: actions/upload-artifact@v3
