@@ -19,10 +19,10 @@ neuromorphic_drivers is a library to interact with USB Neuromorphic devices. The
 
 # Supported devices and features
 
-| Name              | Type   | Resolution | Data types   | Mask | Synchronize | Rate limiter |
-| ----------------- | ------ | ---------- | ------------ | ---- | ----------- | ------------ |
-| Prophesee EVK4    | Camera | 1280 × 720 | DVS, trigger | ✓    | ✓           | ✓            |
-| Prophesee EVK3 HD | Camera | 1280 × 720 | DVS, trigger | ✓    | -           | ✓            |
+| Name              | Type   | Resolution | Data types   | Mask | Synchronize | Rate limiter | Temperature | Illuminance |
+| ----------------- | ------ | ---------- | ------------ | ---- | ----------- | ------------ | ----------- | ----------- |
+| Prophesee EVK4    | Camera | 1280 × 720 | DVS, trigger | ✓    | ✓           | ✓            | ✓           | ✓           |
+| Prophesee EVK3 HD | Camera | 1280 × 720 | DVS, trigger | ✓    | -           | ✓            | -           | -           |
 
 This table lists fratures supported by this library. Some devices support unlisted features or features marked as "no" that have yet to be added to neuromorphic_drivers.
 

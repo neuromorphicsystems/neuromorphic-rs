@@ -750,15 +750,6 @@ macro_rules! generate {
                         iter_data_right,
                         iter_data_right_suffix,
                     ).unwrap();
-                    if stringify!($module) == "prophesee_evk4" {
-                        writeln!(
-                            writer,
-                            concat!(
-                                "    def illuminance(self) -> int:\n",
-                                "        ...",
-                            )
-                        ).unwrap();
-                    }
                 }
             }
             $(
