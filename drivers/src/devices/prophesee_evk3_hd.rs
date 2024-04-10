@@ -47,6 +47,9 @@ pub enum Error {
 
     #[error("bytes mismatch while reading register {0}")]
     RegisterReadMismatch(u32),
+
+    #[error("{0} is not implemented for the Prophesee EVK3 HD")]
+    NotImplemented(String),
 }
 
 impl From<rusb::Error> for Error {
@@ -385,6 +388,10 @@ impl device::Usb for Device {
 
     fn adapter(&self) -> Self::Adapter {
         Self::Adapter::from_dimensions(Self::PROPERTIES.width, Self::PROPERTIES.height)
+    }
+
+    fn temperature_celsius(&self) -> Result<device::TemperatureCelsius, Self::Error> {
+        Err(Error::NotImplemented("temperature_celsius".to_owned()))
     }
 }
 

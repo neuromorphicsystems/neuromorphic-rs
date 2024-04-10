@@ -7,6 +7,9 @@ pub struct ListedDevice {
     pub serial: Result<String, usb::Error>,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct TemperatureCelsius(pub f32);
+
 pub trait Usb: Sized {
     type Adapter;
     type Configuration;
@@ -47,6 +50,8 @@ pub trait Usb: Sized {
     fn speed(&self) -> usb::Speed;
 
     fn adapter(&self) -> Self::Adapter;
+
+    fn temperature_celsius(&self) -> Result<TemperatureCelsius, Self::Error>;
 
     fn list_devices(devices: &rusb::DeviceList<rusb::Context>) -> rusb::Result<Vec<ListedDevice>> {
         let mut result = Vec::new();

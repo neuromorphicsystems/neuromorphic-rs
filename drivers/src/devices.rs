@@ -1,4 +1,5 @@
 use crate::adapters;
+use crate::device::TemperatureCelsius;
 use crate::device::Usb;
 use crate::error;
 use crate::usb;
@@ -225,6 +226,14 @@ macro_rules! register {
                     match self {
                         $(
                             Self::[<$module:camel>](device) => device.speed(),
+                        )+
+                    }
+                }
+
+                pub fn temperature_celsius(&self) -> Result<TemperatureCelsius, Error> {
+                    match self {
+                        $(
+                            Self::[<$module:camel>](device) => device.temperature_celsius().map_err(|error| error.into()),
                         )+
                     }
                 }

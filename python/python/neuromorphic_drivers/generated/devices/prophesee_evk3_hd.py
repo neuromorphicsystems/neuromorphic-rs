@@ -141,6 +141,9 @@ class Device(typing.Protocol):
     def speed(self) -> enums.Speed:
         ...
 
+    def temperature_celsius(self) -> float:
+        ...
+
     def update_configuration(self, configuration: Configuration):
         ...
 
@@ -179,6 +182,9 @@ class DeviceOptional(typing.Protocol):
         ...
 
     def speed(self) -> enums.Speed:
+        ...
+
+    def temperature_celsius(self) -> float:
         ...
 
     def update_configuration(self, configuration: Configuration):
@@ -221,6 +227,9 @@ class DeviceRaw(typing.Protocol):
     def speed(self) -> enums.Speed:
         ...
 
+    def temperature_celsius(self) -> float:
+        ...
+
     def update_configuration(self, configuration: Configuration):
         ...
 
@@ -259,6 +268,9 @@ class DeviceRawOptional(typing.Protocol):
         ...
 
     def speed(self) -> enums.Speed:
+        ...
+
+    def temperature_celsius(self) -> float:
         ...
 
     def update_configuration(self, configuration: Configuration):

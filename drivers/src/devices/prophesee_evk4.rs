@@ -54,6 +54,7 @@ pub struct Device {
     configuration_updater: configuration::Updater<Configuration>,
     serial: String,
     chip_firmware_configuration: Configuration,
+    register_mutex: std::sync::Arc<std::sync::Mutex<()>>,
 }
 
 #[derive(thiserror::Error, Debug, Clone)]
@@ -72,6 +73,12 @@ pub enum Error {
 
     #[error("unsupported mask code ({code}) for pixel mask {offset}")]
     PixelMask { code: u32, offset: u32 },
+
+    #[error("the temperature measurement failed")]
+    Temperature,
+
+    #[error("the illuminance measurement failed")]
+    Illuminance,
 }
 
 impl From<rusb::Error> for Error {
@@ -282,7 +289,8 @@ impl device::Usb for Device {
             area_count_enable: 0,
             output_disable: 1,
             keep_timer_high: 0,
-        }.write(&handle)?;
+        }
+        .write(&handle)?;
         std::thread::sleep(std::time::Duration::from_millis(1));
         TimeBaseCtrl {
             enable: 0,
@@ -444,20 +452,109 @@ impl device::Usb for Device {
         ReadoutCtrl { value: 0x00000200 }.write(&handle)?;
         // }
 
-        // Temperature
-        AdcControl { value: 0x00007641 }.write(&handle)?;
-        AdcControl { value: 0x00007643 }.write(&handle)?;
-        AdcMiscCtrl { value: 0x00000212 }.write(&handle)?;
-        TempCtrl { value: 0x00200082 }.write(&handle)?;
-        TempCtrl { value: 0x00200083 }.write(&handle)?;
-        AdcControl { value: 0x00007641 }.write(&handle)?;
+        // Thermometer ADC initalization
+        AdcControl {
+            adc_en: 1,
+            adc_clk_en: 0,
+            adc_start: 0,
+            reserved_3_32: 0xEC8,
+        }
+        .write(&handle)?;
+        AdcControl {
+            adc_en: 1,
+            adc_clk_en: 1,
+            adc_start: 0,
+            reserved_3_32: 0xEC8,
+        }
+        .write(&handle)?;
+        AdcMiscCtrl {
+            reserved_0_1: 0,
+            adc_buf_cal_en: 1,
+            reserved_2_10: 0x210,
+            adc_rng: 0,
+            adc_temp: 0,
+            reserved_13_32: 0,
+        }
+        .write(&handle)?;
+        std::thread::sleep(std::time::Duration::from_micros(100));
 
-        // Global illuminance
-        IphMirrCtrl { value: 0x00000003 }.write(&handle)?;
-        IphMirrCtrl { value: 0x00000003 }.write(&handle)?;
-        LifoCtrl { value: 0x00000001 }.write(&handle)?;
-        LifoCtrl { value: 0x00000003 }.write(&handle)?;
-        LifoCtrl { value: 0x00000007 }.write(&handle)?;
+        // Thermometer initalization
+        TempCtrl {
+            temp_buf_cal_en: 0,
+            temp_buf_en: 1,
+            reserved_2_32: 0x80020,
+        }
+        .write(&handle)?;
+        TempCtrl {
+            temp_buf_cal_en: 1,
+            temp_buf_en: 1,
+            reserved_2_32: 0x80020,
+        }
+        .write(&handle)?;
+        std::thread::sleep(std::time::Duration::from_micros(100));
+        AdcControl {
+            adc_en: 1,
+            adc_clk_en: 0,
+            adc_start: 0,
+            reserved_3_32: 0xEC8,
+        }
+        .write(&handle)?;
+
+        // Start thermometer
+        AdcControl {
+            adc_en: 1,
+            adc_clk_en: 1,
+            adc_start: 0,
+            reserved_3_32: 0xEC8,
+        }
+        .write(&handle)?;
+        AdcMiscCtrl {
+            reserved_0_1: 0,
+            adc_buf_cal_en: 1,
+            reserved_2_10: 0x84,
+            adc_rng: 0,
+            adc_temp: 1,
+            reserved_13_32: 0,
+        }
+        .write(&handle)?;
+
+        // Illuminometer
+        IphMirrCtrl {
+            iph_mirr_en: 0,
+            iph_mirr_amp_en: 1,
+            reserved_2_32: 0,
+        }
+        .write(&handle)?;
+        std::thread::sleep(std::time::Duration::from_micros(10));
+        IphMirrCtrl {
+            iph_mirr_en: 1,
+            iph_mirr_amp_en: 1,
+            reserved_2_32: 0,
+        }
+        .write(&handle)?;
+        std::thread::sleep(std::time::Duration::from_micros(20));
+        LifoCtrl {
+            lifo_en: 1,
+            lifo_out_en: 0,
+            lifo_cnt_en: 0,
+            reserved_3_32: 0,
+        }
+        .write(&handle)?;
+        std::thread::sleep(std::time::Duration::from_micros(5));
+        LifoCtrl {
+            lifo_en: 1,
+            lifo_out_en: 1,
+            lifo_cnt_en: 0,
+            reserved_3_32: 0,
+        }
+        .write(&handle)?;
+        LifoCtrl {
+            lifo_en: 1,
+            lifo_out_en: 1,
+            lifo_cnt_en: 1,
+            reserved_3_32: 0,
+        }
+        .write(&handle)?;
 
         // Anti-flicker (AFK)
         AfkPeriod {
@@ -618,7 +715,8 @@ impl device::Usb for Device {
                 area_count_enable: 0,
                 output_disable: 0,
                 keep_timer_high: 0,
-            }.write(&handle)?;
+            }
+            .write(&handle)?;
         }
         match configuration.clock {
             Clock::Internal => {
@@ -689,6 +787,7 @@ impl device::Usb for Device {
 
         let handle = std::sync::Arc::new(handle);
         let ring_error_flag = error_flag.clone();
+        let register_mutex = std::sync::Arc::new(std::sync::Mutex::new(()));
         Ok(Device {
             handle: handle.clone(),
             ring: usb::Ring::new(
@@ -705,13 +804,24 @@ impl device::Usb for Device {
             )?,
             configuration_updater: configuration::Updater::new(
                 configuration,
-                ConfigurationUpdaterContext { handle, error_flag },
+                ConfigurationUpdaterContext {
+                    handle,
+                    error_flag,
+                    register_mutex: register_mutex.clone(),
+                },
                 |context, previous_configuration, configuration| {
-                    if let Err(error) = update_configuration(
-                        &context.handle,
-                        Some(previous_configuration),
-                        configuration,
-                    ) {
+                    let result = {
+                        let _guard = context
+                            .register_mutex
+                            .lock()
+                            .expect("register mutex is not poisoned");
+                        update_configuration(
+                            &context.handle,
+                            Some(previous_configuration),
+                            configuration,
+                        )
+                    };
+                    if let Err(error) = result {
                         context.error_flag.store_if_not_set(error);
                     }
                     context
@@ -719,6 +829,7 @@ impl device::Usb for Device {
             ),
             serial,
             chip_firmware_configuration,
+            register_mutex,
         })
     }
 
@@ -741,10 +852,70 @@ impl device::Usb for Device {
     fn adapter(&self) -> Self::Adapter {
         Self::Adapter::from_dimensions(Self::PROPERTIES.width, Self::PROPERTIES.height)
     }
+
+    fn temperature_celsius(&self) -> Result<device::TemperatureCelsius, Self::Error> {
+        let _guard = self
+            .register_mutex
+            .lock()
+            .expect("register mutex is not poisoned");
+        AdcControl {
+            adc_en: 1,
+            adc_clk_en: 1,
+            adc_start: 1,
+            reserved_3_32: 0xEC8,
+        }
+        .write(&self.handle)?;
+        let adc_status = AdcStatus::read(&self.handle)?;
+        if adc_status.adc_done_dyn == 1 {
+            Ok(device::TemperatureCelsius(
+                adc_status.adc_dac_dyn as f32 * 0.19 - 56.0,
+            ))
+        } else {
+            Err(Error::Temperature)
+        }
+    }
+}
+
+impl Device {
+    pub fn illuminance(&self) -> Result<u32, Error> {
+        let lifo_status = LifoStatus::read(&self.handle)?;
+        if lifo_status.lifo_ton_valid == 1 {
+            Ok(lifo_status.lifo_ton)
+        } else {
+            Err(Error::Illuminance)
+        }
+    }
 }
 
 impl Drop for Device {
     fn drop(&mut self) {
+        let _ = LifoCtrl {
+            lifo_en: 0,
+            lifo_out_en: 0,
+            lifo_cnt_en: 0,
+            reserved_3_32: 0,
+        }
+        .write(&self.handle);
+        let _ = IphMirrCtrl {
+            iph_mirr_en: 0,
+            iph_mirr_amp_en: 0,
+            reserved_2_32: 0,
+        }
+        .write(&self.handle);
+        let _ = TempCtrl {
+            temp_buf_cal_en: 1,
+            temp_buf_en: 1,
+            reserved_2_32: 0x80020,
+        }
+        .write(&self.handle);
+        let _ = AdcControl {
+            adc_en: 0,
+            adc_clk_en: 0,
+            adc_start: 0,
+            reserved_3_32: 0xEC8,
+        }
+        .write(&self.handle);
+
         // issd_evk3_imx636_stop in hal_psee_plugins/include/devices/imx636/imx636_evk3_issd.h {
         let _ = RoiCtrl {
             reserved_0_1: 0,
@@ -762,7 +933,8 @@ impl Drop for Device {
             area_count_enable: 0,
             output_disable: 1,
             keep_timer_high: 0,
-        }.write(&self.handle);
+        }
+        .write(&self.handle);
         std::thread::sleep(std::time::Duration::from_millis(1));
         let _ = TimeBaseCtrl {
             enable: 0,
@@ -867,7 +1039,8 @@ fn update_configuration(
             area_count_enable: 0,
             output_disable: if configuration.enable_output { 0 } else { 1 },
             keep_timer_high: 0,
-        }.write(handle)?;
+        }
+        .write(handle)?;
     }
     {
         let previous_biases = previous_configuration.map(|configuration| &configuration.biases);
@@ -1060,6 +1233,7 @@ where
 {
     handle: std::sync::Arc<rusb::DeviceHandle<rusb::Context>>,
     error_flag: error::Flag<IntoError>,
+    register_mutex: std::sync::Arc<std::sync::Mutex<()>>,
 }
 
 struct RuntimeRegister {
@@ -1205,8 +1379,17 @@ register! { RoiCtrl, 0x0004, {
     td_rstn: 10..11,
     reserved_11_32: 11..32,
 } }
-register! { LifoCtrl, 0x000C, { value: 0..32 } }
-register! { LifoStatus, 0x0010, { value: 0..32 } }
+register! { LifoCtrl, 0x000C, {
+    lifo_en: 0..1,
+    lifo_out_en: 1..2,
+    lifo_cnt_en: 2..3,
+    reserved_3_32: 3..32,
+} }
+register! { LifoStatus, 0x0010, {
+    lifo_ton: 0..29,
+    lifo_ton_valid: 29..30,
+    reserved_30_32: 30..32,
+} }
 register! { Reserved0014, 0x0014, { value: 0..32 } }
 register! { Spare0, 0x0018, { value: 0..32 } }
 register! { Unknown001C, 0x001C, { value: 0..32 } }
@@ -1220,13 +1403,38 @@ register! { DigPad2Ctrl, 0x0044, {
     sync: 16..20,
     reserved_20_32: 20..32,
 } }
-register! { AdcControl, 0x004C, { value: 0..32 } }
-register! { AdcStatus, 0x0050, { value: 0..32 } }
-register! { AdcMiscCtrl, 0x0054, { value: 0..32 } }
-register! { TempCtrl, 0x005C, { value: 0..32 } }
+register! { AdcControl, 0x004C, {
+    adc_en: 0..1,
+    adc_clk_en: 1..2,
+    adc_start: 2..3,
+    reserved_3_32: 3..32
+} }
+register! { AdcStatus, 0x0050, {
+    adc_dac_dyn: 0..10,
+    reserved_10_11: 10..11,
+    adc_done_dyn: 11..12,
+    reserved_12_32: 12..32,
+} }
+register! { AdcMiscCtrl, 0x0054, {
+    reserved_0_1: 0..1,
+    adc_buf_cal_en: 1..2,
+    reserved_2_10: 2..10,
+    adc_rng: 10..12,
+    adc_temp: 12..13,
+    reserved_13_32: 13..32,
+} }
+register! { TempCtrl, 0x005C, {
+    temp_buf_cal_en: 0..1,
+    temp_buf_en: 1..2,
+    reserved_2_32: 2..32,
+} }
 register! { Unknown006C, 0x006C, { value: 0..32 } }
 register! { Unknown0070, 0x0070, { value: 0..32 } }
-register! { IphMirrCtrl, 0x0074, { value: 0..32 } }
+register! { IphMirrCtrl, 0x0074, {
+    iph_mirr_en: 0..1,
+    iph_mirr_amp_en: 1..2,
+    reserved_2_32: 2..32,
+} }
 register! { GcdCtrl1, 0x0078, { value: 0..32 } }
 register! { GcdShadowCtrl, 0x0090, { value: 0..32 } }
 register! { GcdShadowStatus, 0x0094, { value: 0..32 } }

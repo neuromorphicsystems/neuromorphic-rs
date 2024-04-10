@@ -340,6 +340,34 @@ impl Device {
             .to_string())
     }
 
+    fn temperature_celsius(slf: pyo3::PyRef<Self>) -> pyo3::PyResult<f32> {
+        slf.device
+            .as_ref()
+            .ok_or(pyo3::exceptions::PyRuntimeError::new_err(
+                "temperature_celsius called after __exit__",
+            ))?
+            .temperature_celsius()
+            .map(|temperature| temperature.0)
+            .map_err(|error| pyo3::exceptions::PyRuntimeError::new_err(format!("{error}")))
+    }
+
+    fn illuminance(slf: pyo3::PyRef<Self>) -> pyo3::PyResult<u32> {
+        match slf
+            .device
+            .as_ref()
+            .ok_or(pyo3::exceptions::PyRuntimeError::new_err(
+                "illuminance called after __exit__",
+            ))? {
+            neuromorphic_drivers_rs::Device::PropheseeEvk4(device) => device
+                .illuminance()
+                .map_err(|error| pyo3::exceptions::PyRuntimeError::new_err(format!("{error}"))),
+            device => Err(pyo3::exceptions::PyRuntimeError::new_err(format!(
+                "illuminance is not implemented for the {}",
+                device.name()
+            ))),
+        }
+    }
+
     fn update_configuration(
         slf: pyo3::PyRef<Self>,
         type_and_configuration: (&str, &[u8]),

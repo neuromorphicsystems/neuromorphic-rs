@@ -39,12 +39,12 @@ impl<Configuration: Clone + Send + 'static> Updater<Configuration> {
                 let mut previous_configuration = previous_configuration;
                 while thread_running.load(std::sync::atomic::Ordering::Acquire) {
                     let configuration = {
-                        let (lock, cvar) = &*thread_flagged_configuration_and_condition;
+                        let (lock, condvar) = &*thread_flagged_configuration_and_condition;
                         // unwrap: mutex is not poisoned
                         let mut flagged_configuration = lock.lock().unwrap();
                         if !flagged_configuration.updated {
                             // unwrap: mutex is not poisoned
-                            flagged_configuration = cvar
+                            flagged_configuration = condvar
                                 .wait_timeout(
                                     flagged_configuration,
                                     std::time::Duration::from_millis(100),
@@ -70,12 +70,12 @@ impl<Configuration: Clone + Send + 'static> Updater<Configuration> {
     }
 
     pub fn update(&self, configuration: Configuration) {
-        let (lock, cvar) = &*self.flagged_configuration_and_condition;
+        let (lock, condvar) = &*self.flagged_configuration_and_condition;
         // unwrap: mutex is not poisoned
         let mut flagged_configuration = lock.lock().unwrap();
         flagged_configuration.configuration = configuration;
         flagged_configuration.updated = true;
-        cvar.notify_one();
+        condvar.notify_one();
     }
 }
 

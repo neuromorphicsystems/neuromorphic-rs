@@ -547,6 +547,9 @@ macro_rules! generate {
                                 "    def speed(self) -> enums.Speed:\n",
                                 "        ...\n",
                                 "\n",
+                                "    def temperature_celsius(self) -> float:\n",
+                                "        ...\n",
+                                "\n",
                                 "    def update_configuration(self, configuration: Configuration):\n",
                                 "        ...",
                             ),
@@ -562,6 +565,15 @@ macro_rules! generate {
                             iter_data_right_suffix,
                             stringify!([<$module:upper>]),
                         ).unwrap();
+                        if stringify!($module) == "prophesee_evk4" {
+                            writeln!(
+                                writer,
+                                concat!(
+                                    "    def illuminance(self) -> int:\n",
+                                    "        ...",
+                                )
+                            ).unwrap();
+                        }
                     }
                 }
             }
@@ -721,6 +733,9 @@ macro_rules! generate {
                             "    def speed(self) -> Speed:\n",
                             "        ...\n",
                             "\n",
+                            "    def temperature_celsius(self) -> float:\n",
+                            "        ...\n",
+                            "\n",
                             "    def update_configuration(self, configuration: Configuration):\n",
                             "        ...",
                         ),
@@ -735,6 +750,15 @@ macro_rules! generate {
                         iter_data_right,
                         iter_data_right_suffix,
                     ).unwrap();
+                    if stringify!($module) == "prophesee_evk4" {
+                        writeln!(
+                            writer,
+                            concat!(
+                                "    def illuminance(self) -> int:\n",
+                                "        ...",
+                            )
+                        ).unwrap();
+                    }
                 }
             }
             $(

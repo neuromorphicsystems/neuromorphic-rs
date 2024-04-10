@@ -50,6 +50,9 @@ class GenericDevice(typing.Protocol):
     def speed(self) -> Speed:
         ...
 
+    def temperature_celsius(self) -> float:
+        ...
+
     def update_configuration(self, configuration: Configuration):
         ...
 
@@ -88,6 +91,9 @@ class GenericDeviceOptional(typing.Protocol):
         ...
 
     def speed(self) -> Speed:
+        ...
+
+    def temperature_celsius(self) -> float:
         ...
 
     def update_configuration(self, configuration: Configuration):
@@ -130,6 +136,9 @@ class GenericDeviceRaw(typing.Protocol):
     def speed(self) -> Speed:
         ...
 
+    def temperature_celsius(self) -> float:
+        ...
+
     def update_configuration(self, configuration: Configuration):
         ...
 
@@ -168,6 +177,9 @@ class GenericDeviceRawOptional(typing.Protocol):
         ...
 
     def speed(self) -> Speed:
+        ...
+
+    def temperature_celsius(self) -> float:
         ...
 
     def update_configuration(self, configuration: Configuration):
