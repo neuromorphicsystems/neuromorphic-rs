@@ -43,6 +43,8 @@ pub trait Usb: Sized {
 
     fn next_with_timeout(&self, timeout: &std::time::Duration) -> Option<usb::BufferView>;
 
+    fn backlog(&self) -> usize;
+
     fn serial(&self) -> String;
 
     fn chip_firmware_configuration(&self) -> Self::Configuration;

@@ -271,7 +271,7 @@ extern "system" fn usb_transfer_callback(transfer_pointer: *mut libusb1_sys::lib
                 .ring
                 .shared
                 .lock()
-                .expect("ring context's lock is poisonned");
+                .expect("ring context's lock is not poisoned");
             match shared.transfer_statuses[context.transfer_index] {
                 TransferStatus::Active => match transfer.status {
                     libusb1_sys::constants::LIBUSB_TRANSFER_COMPLETED
@@ -495,7 +495,7 @@ impl Ring {
             let shared = context
                 .shared
                 .lock()
-                .expect("ring context's lock is poisonned");
+                .expect("ring context's lock is not poisoned");
             for index in 0..configuration.transfer_queue_size {
                 // unsafe: libusb1_sys wrapper
                 let mut transfer = match std::ptr::NonNull::new(unsafe {
@@ -623,7 +623,7 @@ impl Ring {
                             .context
                             .shared
                             .lock()
-                            .expect("ring context's lock is poisonned");
+                            .expect("ring context's lock is not poisoned");
                         for rest_index in index..result.transfers.len() {
                             // dropping 'result' cancels transfers
                             // mark unscheduled transfers as complete to prevent un-needed cancelling
@@ -686,6 +686,15 @@ impl Drop for BufferView<'_> {
 }
 
 impl Ring {
+    pub fn backlog(&self) -> usize {
+        let shared = self
+            .context
+            .shared
+            .lock()
+            .expect("ring context's lock is not poisoned");
+        (shared.write_range.0 + shared.buffers.len() - 1 - shared.read) % shared.buffers.len()
+    }
+
     pub fn next_with_timeout(&self, duration: &std::time::Duration) -> Option<BufferView> {
         if self
             .active_buffer_view
@@ -699,7 +708,7 @@ impl Ring {
                 .context
                 .shared
                 .lock()
-                .expect("ring context's lock is poisonned");
+                .expect("ring context's lock is not poisoned");
             loop {
                 shared.read = (shared.read + 1) % shared.buffers.len();
                 while (shared.write_range.1 + shared.buffers.len() - 1 - shared.read)
@@ -759,7 +768,7 @@ impl Drop for Ring {
                 .context
                 .shared
                 .lock()
-                .expect("ring context's lock is poisonned");
+                .expect("ring context's lock is not poisoned");
             // unsafe: transfer is allocated
             let _ = unsafe { libusb1_sys::libusb_cancel_transfer(self.transfers[0].as_ptr()) };
             for index in 0..self.transfers.len() {
@@ -773,7 +782,7 @@ impl Drop for Ring {
                     .context
                     .shared
                     .lock()
-                    .expect("ring context's lock is poisonned");
+                    .expect("ring context's lock is not poisoned");
                 for index in 0..self.transfers.len() {
                     match shared.transfer_statuses[index] {
                         TransferStatus::Active => {
@@ -825,7 +834,7 @@ impl Drop for Ring {
                 .context
                 .shared
                 .lock()
-                .expect("ring context's lock is poisonned");
+                .expect("ring context's lock is not poisoned");
             for buffer in shared.buffers.iter() {
                 if buffer.dma {
                     // unsafe: buffer was allocated by libusb with 'capacity' bytes

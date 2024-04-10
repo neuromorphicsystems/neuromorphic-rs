@@ -190,6 +190,14 @@ macro_rules! register {
                     }
                 }
 
+                pub fn backlog(&self) -> usize {
+                    match self {
+                        $(
+                            Self::[<$module:camel>](device) => device.backlog(),
+                        )+
+                    }
+                }
+
                 pub fn properties(&self) -> Properties {
                     match self {
                         $(

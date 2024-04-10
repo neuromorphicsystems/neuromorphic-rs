@@ -837,6 +837,10 @@ impl device::Usb for Device {
         self.ring.next_with_timeout(timeout)
     }
 
+    fn backlog(&self) -> usize {
+        self.ring.backlog()
+    }
+
     fn serial(&self) -> String {
         self.serial.clone()
     }
