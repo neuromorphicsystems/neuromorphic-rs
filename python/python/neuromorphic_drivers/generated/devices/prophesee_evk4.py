@@ -161,6 +161,9 @@ class Device(typing.Protocol):
     def __next__(self) -> tuple[status.StatusNonOptional, dict[str, numpy.ndarray[typing.Any, numpy.dtype[numpy.void]]]]:
         ...
 
+    def backlog(self) -> int:
+        ...
+
     def clear_backlog(self, until: int):
         ...
 
@@ -204,6 +207,9 @@ class DeviceOptional(typing.Protocol):
         ...
 
     def __next__(self) -> tuple[status.Status, typing.Optional[dict[str, numpy.ndarray[typing.Any, numpy.dtype[numpy.void]]]]]:
+        ...
+
+    def backlog(self) -> int:
         ...
 
     def clear_backlog(self, until: int):
@@ -251,6 +257,9 @@ class DeviceRaw(typing.Protocol):
     def __next__(self) -> tuple[status.StatusNonOptional, bytes]:
         ...
 
+    def backlog(self) -> int:
+        ...
+
     def clear_backlog(self, until: int):
         ...
 
@@ -294,6 +303,9 @@ class DeviceRawOptional(typing.Protocol):
         ...
 
     def __next__(self) -> tuple[status.Status, typing.Optional[bytes]]:
+        ...
+
+    def backlog(self) -> int:
         ...
 
     def clear_backlog(self, until: int):

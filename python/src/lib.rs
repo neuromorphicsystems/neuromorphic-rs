@@ -247,6 +247,16 @@ impl Device {
         })
     }
 
+    fn backlog(slf: pyo3::PyRef<Self>) -> pyo3::PyResult<usize> {
+        Ok(slf
+            .device
+            .as_ref()
+            .ok_or(pyo3::exceptions::PyRuntimeError::new_err(
+                "backlog called after __exit__",
+            ))?
+            .backlog())
+    }
+
     fn clear_backlog(
         slf: pyo3::PyRef<Self>,
         python: pyo3::Python,
