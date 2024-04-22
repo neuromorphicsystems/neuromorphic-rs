@@ -6,7 +6,6 @@ documentation = "https://docs.rs/serde-reflection"
 repository = "https://github.com/zefchain/serde-reflection"
 authors = ["Mathieu Baudet <mathieu.baudet@zefchain.com>"]
 license = "MIT OR Apache-2.0"
-readme = "README.md"
 edition = "2021"
 
 [dependencies]
