@@ -7,7 +7,7 @@ authors = [
     {name = "International Centre for Neuromorphic Systems"},
     {name = "Alexandre Marcireau"},
 ]
-version = "0.12.0"
+version = "0.13.0"
 requires-python = ">=3.8"
 dependencies = ["numpy>=1.24"]
 
@@ -17,7 +17,7 @@ repository = "https://github.com/neuromorphicsystems/neuromorphic-rs/"
 documentation = "https://github.com/neuromorphicsystems/neuromorphic-rs/"
 
 [build-system]
-requires = ["maturin==1.2.3", "numpy"]
+requires = ["maturin==1.5.1", "numpy"]
 build-backend = "maturin"
 
 [tool.maturin]
