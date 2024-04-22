@@ -9,6 +9,14 @@ impl Bytes {
         }
     }
 
+    pub fn length(&self) -> usize {
+        if self.inner.is_null() {
+            0
+        } else {
+            unsafe { pyo3::ffi::PyBytes_Size(self.inner) as usize }
+        }
+    }
+
     pub fn extend_from_slice(&mut self, _python: pyo3::Python, slice: &[u8]) {
         if self.inner.is_null() {
             self.inner = unsafe {
@@ -36,11 +44,11 @@ impl Bytes {
         }
     }
 
-    pub fn take<'p>(&mut self, python: pyo3::Python<'p>) -> Option<&'p pyo3::types::PyBytes> {
+    pub fn take<'p>(&mut self, python: pyo3::Python<'p>) -> Option<pyo3::Bound<'p, pyo3::PyAny>> {
         if self.inner.is_null() {
             None
         } else {
-            let py_bytes = Some(unsafe { python.from_owned_ptr(self.inner) });
+            let py_bytes = Some(unsafe { pyo3::Bound::from_owned_ptr(python, self.inner) });
             self.inner = std::ptr::null_mut();
             py_bytes
         }

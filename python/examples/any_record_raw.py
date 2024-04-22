@@ -17,5 +17,5 @@ with nd.open(raw=True) as device:
             output.flush()
             total += len(packet)
             print(
-                f"{total / 1e6:.1f} MB (backlog: {status.ring.backlog()}, raw: {status.ring.raw_packets()})"
+                f"{total / 1e6:.1f} MB (backlog: {status.ring.backlog}, raw: {status.ring.raw_packets})"
             )

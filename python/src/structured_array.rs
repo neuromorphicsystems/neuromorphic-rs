@@ -13,9 +13,10 @@ macro_rules! dtype_base {
 
             impl pyo3::IntoPy<core::ffi::c_int> for DtypeBase {
                 fn into_py(self, python: pyo3::Python) -> core::ffi::c_int {
+                    use numpy::prelude::PyArrayDescrMethods;
                     match self {
                         $(
-                            Self::[<$type:camel>] => $type::get_dtype(python).num(),
+                            Self::[<$type:camel>] => $type::get_dtype_bound(python).num(),
                         )+
                     }
                 }

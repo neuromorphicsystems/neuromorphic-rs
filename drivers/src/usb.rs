@@ -1,11 +1,11 @@
-use crate::error;
+use crate::flag;
 use rusb::UsbContext;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Configuration {
-    pub buffer_size: usize,
-    pub ring_size: usize,
-    pub transfer_queue_size: usize,
+    pub buffer_length: usize,
+    pub ring_length: usize,
+    pub transfer_queue_length: usize,
     pub allow_dma: bool,
 }
 
@@ -39,7 +39,7 @@ pub enum Error {
     Busy,
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub enum Speed {
     Unknown,
     Low,
@@ -124,6 +124,7 @@ impl BufferData {
 
 struct Buffer {
     instant: std::time::Instant,
+    first_after_overflow: bool,
     data: BufferData,
     length: usize,
     capacity: usize,
@@ -136,13 +137,17 @@ pub struct EventLoop {
     thread: Option<std::thread::JoinHandle<()>>,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct Overflow(());
+
 impl EventLoop {
-    pub fn new<IntoError>(
+    pub fn new<IntoError, IntoWarning>(
         timeout: std::time::Duration,
-        error_flag: error::Flag<IntoError>,
+        flag: flag::Flag<IntoError, IntoWarning>,
     ) -> Result<Self, Error>
     where
         IntoError: From<Error> + Clone + Send + 'static,
+        IntoWarning: From<Overflow> + Clone + Send + 'static,
     {
         let context = rusb::Context::new()?;
         let running = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
@@ -153,7 +158,7 @@ impl EventLoop {
             thread: Some(std::thread::spawn(move || {
                 while thread_running.load(std::sync::atomic::Ordering::Acquire) {
                     if let Err(handle_events_error) = thread_context.handle_events(Some(timeout)) {
-                        error_flag.store_if_not_set(Error::from(handle_events_error));
+                        flag.store_error_if_not_set(Error::from(handle_events_error));
                     }
                 }
             })),
@@ -183,15 +188,41 @@ enum TransferStatus {
     Deallocated,
 }
 
+#[derive(Clone)]
+pub struct WriteRange {
+    pub start: usize,
+    pub end: usize,
+    pub ring_length: usize,
+}
+
+impl WriteRange {
+    fn increment_start(&mut self) {
+        self.start = (self.start + 1) % self.ring_length;
+    }
+
+    fn increment_end(&mut self) {
+        self.end = (self.end + 1) % self.ring_length;
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum Clutch {
+    Disengaged,
+    Engaged,
+}
+
 struct RingContext {
     read: usize,
-    write_range: (usize, usize),
+    write_range: WriteRange,
     transfer_statuses: Vec<TransferStatus>,
     buffers: Vec<Buffer>,
+    freewheel_buffers: Vec<Buffer>,
+    clutch: Clutch,
 }
 
 struct SharedRingContext {
     on_error: Box<dyn Fn(Error) + Send + Sync + 'static>,
+    on_overflow: Box<dyn Fn(Overflow) + Send + Sync + 'static>,
     shared: std::sync::Mutex<RingContext>,
     shared_condvar: std::sync::Condvar,
 }
@@ -249,9 +280,16 @@ pub struct TransferProperties {
     pub timeout: std::time::Duration,
 }
 
+enum TransferClutch {
+    Disengaged,
+    DisengagedFirst,
+    Engaged,
+}
+
 struct TransferContext {
     ring: std::sync::Arc<SharedRingContext>,
     transfer_index: usize,
+    clutch: TransferClutch,
 }
 
 #[no_mangle]
@@ -276,39 +314,58 @@ extern "system" fn usb_transfer_callback(transfer_pointer: *mut libusb1_sys::lib
                 TransferStatus::Active => match transfer.status {
                     libusb1_sys::constants::LIBUSB_TRANSFER_COMPLETED
                     | libusb1_sys::constants::LIBUSB_TRANSFER_TIMED_OUT => {
-                        if shared.write_range.1 == shared.read {
-                            error = Some(Error::Overflow);
-                            shared.transfer_statuses[context.transfer_index] =
-                                TransferStatus::Complete;
-                        } else {
-                            let active_buffer = shared.write_range.0;
+                        if !matches!(context.clutch, TransferClutch::Engaged) {
+                            let active_buffer = shared.write_range.start;
                             shared.buffers[active_buffer].instant = now;
+                            shared.buffers[active_buffer].first_after_overflow =
+                                matches!(context.clutch, TransferClutch::DisengagedFirst);
                             shared.buffers[active_buffer].length = transfer.actual_length as usize;
-                            transfer.buffer = shared.buffers[shared.write_range.1].data.as_ptr();
-                            transfer.length = shared.buffers[shared.write_range.1].capacity as i32;
-                            resubmit = true;
-                            shared.write_range.0 =
-                                (shared.write_range.0 + 1) % shared.buffers.len();
-                            shared.write_range.1 =
-                                (shared.write_range.1 + 1) % shared.buffers.len();
+                            shared.write_range.increment_start();
                             context.ring.shared_condvar.notify_one();
                         }
+                        if shared.write_range.end == shared.read {
+                            if matches!(shared.clutch, Clutch::Disengaged) {
+                                shared.clutch = Clutch::Engaged;
+                                (context.ring.on_overflow)(Overflow(()));
+                            }
+                            context.clutch = TransferClutch::Engaged;
+                            transfer.buffer = shared.freewheel_buffers[context.transfer_index]
+                                .data
+                                .as_ptr();
+                            transfer.length =
+                                shared.freewheel_buffers[context.transfer_index].capacity as i32;
+                        } else {
+                            match shared.clutch {
+                                Clutch::Disengaged => {
+                                    context.clutch = TransferClutch::Disengaged;
+                                }
+                                Clutch::Engaged => {
+                                    shared.clutch = Clutch::Disengaged;
+                                    context.clutch = TransferClutch::DisengagedFirst;
+                                }
+                            }
+                            transfer.buffer = shared.buffers[shared.write_range.end].data.as_ptr();
+                            transfer.length =
+                                shared.buffers[shared.write_range.end].capacity as i32;
+                            shared.write_range.increment_end();
+                        }
+                        resubmit = true;
                     }
                     status @ (libusb1_sys::constants::LIBUSB_TRANSFER_ERROR
                     | libusb1_sys::constants::LIBUSB_TRANSFER_CANCELLED
                     | libusb1_sys::constants::LIBUSB_TRANSFER_STALL
                     | libusb1_sys::constants::LIBUSB_TRANSFER_NO_DEVICE
                     | libusb1_sys::constants::LIBUSB_TRANSFER_OVERFLOW) => {
-                        if shared.write_range.1 != shared.read {
-                            let active_buffer = shared.write_range.0;
+                        if !matches!(context.clutch, TransferClutch::Engaged) {
+                            let active_buffer = shared.write_range.start;
                             shared.buffers[active_buffer].instant = now;
                             shared.buffers[active_buffer].length = transfer.actual_length as usize;
-                            shared.write_range.0 =
-                                (shared.write_range.0 + 1) % shared.buffers.len();
-                            shared.write_range.1 =
-                                (shared.write_range.1 + 1) % shared.buffers.len();
+                            shared.write_range.increment_start();
                             context.ring.shared_condvar.notify_one();
                         }
+                        // set clutch to report a packet drop
+                        shared.clutch = Clutch::Engaged;
+                        context.clutch = TransferClutch::Disengaged;
                         shared.transfer_statuses[context.transfer_index] = TransferStatus::Complete;
                         error = Some(
                             match status {
@@ -339,16 +396,16 @@ extern "system" fn usb_transfer_callback(transfer_pointer: *mut libusb1_sys::lib
                     | libusb1_sys::constants::LIBUSB_TRANSFER_CANCELLED
                     | libusb1_sys::constants::LIBUSB_TRANSFER_STALL
                     | libusb1_sys::constants::LIBUSB_TRANSFER_NO_DEVICE => {
-                        if shared.write_range.1 != shared.read {
-                            let active_buffer = shared.write_range.0;
+                        if !matches!(context.clutch, TransferClutch::Engaged) {
+                            let active_buffer = shared.write_range.start;
                             shared.buffers[active_buffer].instant = now;
                             shared.buffers[active_buffer].length = transfer.actual_length as usize;
-                            shared.write_range.0 =
-                                (shared.write_range.0 + 1) % shared.buffers.len();
-                            shared.write_range.1 =
-                                (shared.write_range.1 + 1) % shared.buffers.len();
+                            shared.write_range.increment_start();
                             context.ring.shared_condvar.notify_one();
                         }
+                        // set clutch to report a packet drop
+                        shared.clutch = Clutch::Engaged;
+                        context.clutch = TransferClutch::Disengaged;
                         shared.transfer_statuses[context.transfer_index] = TransferStatus::Complete;
                     }
                     unknown_transfer_status => {
@@ -409,50 +466,60 @@ extern "system" fn usb_transfer_callback(transfer_pointer: *mut libusb1_sys::lib
 }
 
 impl Ring {
-    pub fn new<OnError>(
+    pub fn new<OnError, OnOverflow>(
         handle: std::sync::Arc<rusb::DeviceHandle<rusb::Context>>,
         configuration: &Configuration,
         on_error: OnError,
+        on_overflow: OnOverflow,
         event_loop: std::sync::Arc<EventLoop>,
         transfer_type: TransferType,
     ) -> Result<Self, Error>
     where
         OnError: Fn(Error) + Send + Sync + 'static,
+        OnOverflow: Fn(Overflow) + Send + Sync + 'static,
     {
         assert!(
             handle.context() == event_loop.context(),
             "handle and event_loop must have the same context"
         );
-        if configuration.ring_size <= configuration.transfer_queue_size {
+        if configuration.ring_length <= configuration.transfer_queue_length {
             return Err(Error::ConfigurationSizes);
         }
         let mut buffers = Vec::new();
-        buffers.reserve_exact(configuration.ring_size);
-        for _ in 0..configuration.ring_size {
+        buffers.reserve_exact(configuration.ring_length);
+        let mut freewheel_buffers = Vec::new();
+        freewheel_buffers.reserve_exact(configuration.transfer_queue_length);
+        for index in 0..configuration.ring_length + configuration.transfer_queue_length {
             let dma_buffer = if configuration.allow_dma {
                 // unsafe: libusb wrapper
                 unsafe {
                     libusb_dev_mem_alloc(
                         handle.as_raw(),
-                        configuration.buffer_size as libc::ssize_t,
+                        configuration.buffer_length as libc::ssize_t,
                     )
                 }
             } else {
                 std::ptr::null_mut()
             };
             if dma_buffer.is_null() {
-                buffers.push(Buffer {
+                (if index < configuration.ring_length {
+                    &mut buffers
+                } else {
+                    &mut freewheel_buffers
+                })
+                .push(Buffer {
                     instant: std::time::Instant::now(),
+                    first_after_overflow: false,
                     data: BufferData(
                         std::ptr::NonNull::new(
                             // unsafe: alloc wrapper
-                            // std::alloc::Layout::from_size_align_unchecked
+                            // std::alloc::Layout::from_length_align_unchecked
                             // - align must not be zero
                             // - align must be a power of two
                             // - size, when rounded up to the nearest multiple of align, must not overflow isize
                             unsafe {
                                 std::alloc::alloc(std::alloc::Layout::from_size_align_unchecked(
-                                    configuration.buffer_size,
+                                    configuration.buffer_length,
                                     1,
                                 ))
                             },
@@ -460,43 +527,56 @@ impl Ring {
                         .ok_or(rusb::Error::NoMem)?,
                     ),
                     length: 0,
-                    capacity: configuration.buffer_size,
+                    capacity: configuration.buffer_length,
                     dma: false,
                 });
             } else {
-                buffers.push(Buffer {
+                (if index < configuration.ring_length {
+                    &mut buffers
+                } else {
+                    &mut freewheel_buffers
+                })
+                .push(Buffer {
                     instant: std::time::Instant::now(),
+                    first_after_overflow: false,
                     // unsafe: dma_buffer is not null
                     data: BufferData(unsafe { std::ptr::NonNull::new_unchecked(dma_buffer) }),
                     length: 0,
-                    capacity: configuration.buffer_size,
+                    capacity: configuration.buffer_length,
                     dma: true,
                 });
             }
         }
         let mut transfer_statuses = Vec::new();
-        transfer_statuses.reserve_exact(configuration.transfer_queue_size);
-        for _ in 0..configuration.transfer_queue_size {
+        transfer_statuses.reserve_exact(configuration.transfer_queue_length);
+        for _ in 0..configuration.transfer_queue_length {
             transfer_statuses.push(TransferStatus::Active);
         }
         let context = std::sync::Arc::new(SharedRingContext {
             on_error: Box::new(on_error),
+            on_overflow: Box::new(on_overflow),
             shared: std::sync::Mutex::new(RingContext {
                 read: buffers.len() - 1,
-                write_range: (0, configuration.transfer_queue_size),
+                write_range: WriteRange {
+                    start: 0,
+                    end: configuration.transfer_queue_length,
+                    ring_length: configuration.ring_length,
+                },
                 transfer_statuses,
                 buffers,
+                freewheel_buffers,
+                clutch: Clutch::Disengaged,
             }),
             shared_condvar: std::sync::Condvar::new(),
         });
         let mut transfers: Vec<LibusbTransfer> = Vec::new();
-        transfers.reserve_exact(configuration.transfer_queue_size);
+        transfers.reserve_exact(configuration.transfer_queue_length);
         {
             let shared = context
                 .shared
                 .lock()
                 .expect("ring context's lock is not poisoned");
-            for index in 0..configuration.transfer_queue_size {
+            for index in 0..configuration.transfer_queue_length {
                 // unsafe: libusb1_sys wrapper
                 let mut transfer = match std::ptr::NonNull::new(unsafe {
                     libusb1_sys::libusb_alloc_transfer(0)
@@ -519,6 +599,7 @@ impl Ring {
                 let transfer_context = Box::new(TransferContext {
                     ring: context.clone(),
                     transfer_index: index,
+                    clutch: TransferClutch::Disengaged,
                 });
                 let transfer_context_pointer = Box::into_raw(transfer_context);
                 match transfer_type {
@@ -661,16 +742,23 @@ impl Ring {
 
 pub struct BufferView<'a> {
     pub instant: std::time::Instant,
+    pub first_after_overflow: bool,
     pub slice: &'a [u8],
     pub read: usize,
-    pub write_range: (usize, usize),
-    pub ring_length: usize,
+    pub write_range: WriteRange,
+    pub clutch: Clutch,
     active: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl BufferView<'_> {
     pub fn backlog(&self) -> usize {
-        (self.write_range.0 + self.ring_length - 1 - self.read) % self.ring_length
+        let result = (self.write_range.start + self.write_range.ring_length - 1 - self.read)
+            % self.write_range.ring_length;
+        if matches!(self.clutch, Clutch::Engaged) && result == 0 {
+            self.write_range.ring_length
+        } else {
+            result
+        }
     }
 
     pub fn delay(&self) -> std::time::Duration {
@@ -692,7 +780,7 @@ impl Ring {
             .shared
             .lock()
             .expect("ring context's lock is not poisoned");
-        (shared.write_range.0 + shared.buffers.len() - 1 - shared.read) % shared.buffers.len()
+        (shared.write_range.start + shared.buffers.len() - 1 - shared.read) % shared.buffers.len()
     }
 
     pub fn next_with_timeout(&self, duration: &std::time::Duration) -> Option<BufferView> {
@@ -702,7 +790,7 @@ impl Ring {
         {
             panic!("the buffer returned by a previous call of next_with_timeout must be dropped before calling next_with_timeout again");
         }
-        let (instant, slice, read, write_range, ring_length) = {
+        let (instant, first_after_overflow, slice, read, write_range, clutch) = {
             let start = std::time::Instant::now();
             let mut shared = self
                 .context
@@ -711,7 +799,7 @@ impl Ring {
                 .expect("ring context's lock is not poisoned");
             loop {
                 shared.read = (shared.read + 1) % shared.buffers.len();
-                while (shared.write_range.1 + shared.buffers.len() - 1 - shared.read)
+                while (shared.write_range.end + shared.buffers.len() - 1 - shared.read)
                     % shared.buffers.len()
                     < shared.transfer_statuses.len()
                 {
@@ -719,7 +807,8 @@ impl Ring {
                     if ellapsed >= *duration {
                         self.active_buffer_view
                             .store(false, std::sync::atomic::Ordering::Release);
-                        shared.read = (shared.read + shared.buffers.len() - 1) % shared.buffers.len();
+                        shared.read =
+                            (shared.read + shared.buffers.len() - 1) % shared.buffers.len();
                         return None;
                     }
                     shared = self
@@ -735,6 +824,7 @@ impl Ring {
             }
             (
                 shared.buffers[shared.read].instant,
+                shared.buffers[shared.read].first_after_overflow,
                 // unsafe: data validity guaranteed by read / write_range in shared
                 unsafe {
                     std::slice::from_raw_parts(
@@ -743,16 +833,17 @@ impl Ring {
                     )
                 },
                 shared.read,
-                shared.write_range,
-                shared.buffers.len(),
+                shared.write_range.clone(),
+                shared.clutch,
             )
         };
         Some(BufferView {
             instant,
+            first_after_overflow,
             slice,
             read,
             write_range,
-            ring_length,
+            clutch,
             active: self.active_buffer_view.clone(),
         })
     }

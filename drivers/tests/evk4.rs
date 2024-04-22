@@ -1,20 +1,14 @@
-use neuromorphic_drivers::device::Usb;
+use neuromorphic_drivers::UsbDevice;
 
 #[test]
-fn read() -> Result<(), neuromorphic_drivers::devices::prophesee_evk4::Error> {
-    let error_flag: neuromorphic_drivers::error::Flag<
-        neuromorphic_drivers::devices::prophesee_evk4::Error,
-    > = neuromorphic_drivers::error::Flag::new();
-    let event_loop = std::sync::Arc::new(neuromorphic_drivers::usb::EventLoop::new(
-        std::time::Duration::from_millis(100),
-        error_flag.clone(),
-    )?);
-    let device = neuromorphic_drivers::devices::prophesee_evk4::Device::open(
+fn read() -> Result<(), neuromorphic_drivers::Error> {
+    let (flag, event_loop) = neuromorphic_drivers::event_loop_and_flag()?;
+    let device = neuromorphic_drivers::prophesee_evk4::open(
         &None,
-        neuromorphic_drivers::devices::prophesee_evk4::Device::PROPERTIES.default_configuration,
-        &neuromorphic_drivers::devices::prophesee_evk4::Device::DEFAULT_USB_CONFIGURATION,
+        neuromorphic_drivers::prophesee_evk4::DEFAULT_CONFIGURATION,
+        &neuromorphic_drivers::prophesee_evk4::DEFAULT_USB_CONFIGURATION,
         event_loop,
-        error_flag.clone(),
+        flag.clone(),
     )?;
     let start = std::time::Instant::now();
     let mut previous = std::time::Instant::now();
@@ -30,6 +24,10 @@ fn read() -> Result<(), neuromorphic_drivers::devices::prophesee_evk4::Error> {
                 (buffer_view.slice.len() as f64 / 1e6) / now.duration_since(previous).as_secs_f64()
             );
             previous = now;
+        }
+        flag.load_error()?;
+        if flag.load_warning().is_some() {
+            eprintln!("USB circular buffer overflow");
         }
     }
     Ok(())

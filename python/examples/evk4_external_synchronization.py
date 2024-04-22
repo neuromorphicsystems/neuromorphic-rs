@@ -57,16 +57,17 @@ while True:
         backlogs[:] += 1
         backlogs[index] = 0
     else:
-        backlog = status.ring.backlog()
         backlogs[:] += 1
-        backlogs[index] = backlog
+        backlogs[index] = status.ring.backlog
         delay = status.delay()
         if delay is not None:
             if packet is not None:
                 print(
-                    f"{index}: {round(delay * 1e6)} µs, backlog: {backlog}, bytes: {len(packet)}"
+                    f"{index}: {round(delay * 1e6)} µs, backlog: {status.ring.backlog}, bytes: {len(packet)}"
                 )
                 outputs[index].write(packet)
                 outputs[index].flush()
             else:
-                print(f"{index}: {round(delay * 1e6)} µs, backlog: {backlog}")
+                print(
+                    f"{index}: {round(delay * 1e6)} µs, backlog: {status.ring.backlog}"
+                )

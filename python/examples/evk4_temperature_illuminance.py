@@ -9,9 +9,5 @@ with nd.open(nd.prophesee_evk4.Configuration(), raw=True) as device:
     next = time.monotonic() + 1.0
     for status, packet in device:
         if time.monotonic() >= next:
-            try:
-                print(f"{device.temperature_celsius()}ºC")
-                print(f"{device.illuminance()}")
-            except:
-                pass
+            print(f"{device.temperature_celsius()}ºC")
             next += 1.0

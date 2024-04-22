@@ -33,7 +33,10 @@ struct Device {
     adapter: Option<std::cell::RefCell<adapters::Adapter>>,
     iterator_timeout: Option<std::time::Duration>,
     iterator_maximum_raw_packets: usize,
-    error_flag: neuromorphic_drivers_rs::error::Flag<neuromorphic_drivers_rs::Error>,
+    flag: neuromorphic_drivers_rs::Flag<
+        neuromorphic_drivers_rs::Error,
+        neuromorphic_drivers_rs::UsbOverflow,
+    >,
 }
 
 // unsafe workaround until auto traits are stabilized
@@ -49,9 +52,10 @@ unsafe impl Send for Buffer<'_> {}
 
 struct Status {
     instant: std::time::Instant,
-    read_range: (usize, usize),
-    write_range: (usize, usize),
-    ring_length: usize,
+    backlog: usize,
+    raw_packets: usize,
+    clutch_engaged: bool,
+    overflow_indices: Vec<usize>,
     current_t: Option<u64>,
 }
 
@@ -61,34 +65,34 @@ impl Device {
     fn new(
         raw: bool,
         iterator_maximum_raw_packets: usize,
-        type_and_configuration: Option<(&str, &[u8])>,
+        device_type: Option<&str>,
+        configuration: Option<&[u8]>,
         serial: Option<&str>,
         usb_configuration: Option<&[u8]>,
         iterator_timeout: Option<f64>,
     ) -> pyo3::PyResult<Self> {
-        let error_flag = neuromorphic_drivers_rs::error::Flag::new();
-        let event_loop = std::sync::Arc::new(
-            neuromorphic_drivers_rs::usb::EventLoop::new(
-                std::time::Duration::from_millis(100),
-                error_flag.clone(),
-            )
-            .map_err(|error| pyo3::exceptions::PyRuntimeError::new_err(format!("{error}")))?,
-        );
+        let (flag, event_loop) = neuromorphic_drivers_rs::event_loop_and_flag()
+            .map_err(|error| pyo3::exceptions::PyRuntimeError::new_err(format!("{error}")))?;
         let device = neuromorphic_drivers_rs::open(
             serial,
-            match type_and_configuration {
-                Some((device_type, configuration)) => Some(
-                    neuromorphic_drivers_rs::Configuration::deserialize_bincode(
-                        device_type.parse().map_err(|error| {
+            if let Some(device_type) = device_type {
+                if let Some(configuration) = configuration {
+                    Some(
+                        neuromorphic_drivers_rs::Configuration::deserialize_bincode(
+                            device_type.parse().map_err(|error| {
+                                pyo3::exceptions::PyRuntimeError::new_err(format!("{error}"))
+                            })?,
+                            configuration,
+                        )
+                        .map_err(|error| {
                             pyo3::exceptions::PyRuntimeError::new_err(format!("{error}"))
                         })?,
-                        configuration,
                     )
-                    .map_err(|error| {
-                        pyo3::exceptions::PyRuntimeError::new_err(format!("{error}"))
-                    })?,
-                ),
-                None => None,
+                } else {
+                    None
+                }
+            } else {
+                None
             },
             if let Some(usb_configuration) = usb_configuration {
                 Some(
@@ -103,7 +107,7 @@ impl Device {
                 None
             },
             event_loop,
-            error_flag.clone(),
+            flag.clone(),
         )
         .map_err(|error| pyo3::exceptions::PyRuntimeError::new_err(format!("{error}")))?;
         let adapter = if raw {
@@ -127,7 +131,7 @@ impl Device {
                 None => None,
             },
             iterator_maximum_raw_packets,
-            error_flag,
+            flag,
         })
     }
 
@@ -137,9 +141,9 @@ impl Device {
 
     fn __exit__(
         &mut self,
-        _exception_type: Option<&pyo3::types::PyType>,
-        _value: Option<&pyo3::types::PyAny>,
-        _traceback: Option<&pyo3::types::PyAny>,
+        _exception_type: Option<&pyo3::Bound<'_, pyo3::types::PyType>>,
+        _value: Option<&pyo3::Bound<'_, pyo3::types::PyAny>>,
+        _traceback: Option<&pyo3::Bound<'_, pyo3::types::PyAny>>,
     ) {
         self.device = None;
     }
@@ -153,7 +157,7 @@ impl Device {
         python: pyo3::Python,
     ) -> pyo3::PyResult<Option<pyo3::PyObject>> {
         let start = std::time::Instant::now();
-        let error_flag = slf.error_flag.clone();
+        let flag = slf.flag.clone();
         let iterator_timeout = slf.iterator_timeout;
         let iterator_maximum_raw_packets = slf.iterator_maximum_raw_packets;
         let device = DeviceReference(slf.device.as_ref().ok_or(
@@ -172,49 +176,67 @@ impl Device {
             |adapter| Buffer::Adapter(adapter.deref_mut()),
         );
         python.allow_threads(|| -> pyo3::PyResult<Option<pyo3::PyObject>> {
-            let mut status = None;
-            let mut raw_packets = 0;
+            let mut status: Option<Status> = None;
             let mut available_raw_packets = None;
             let buffer_timeout = iterator_timeout.unwrap_or(std::time::Duration::from_millis(100));
             loop {
-                if let Some(error) = error_flag.load() {
-                    return Err(pyo3::exceptions::PyRuntimeError::new_err(format!(
-                        "{error:?}"
-                    )));
-                }
+                flag.load_error().map_err(|error| {
+                    pyo3::exceptions::PyRuntimeError::new_err(format!("{error:?}"))
+                })?;
                 if let Some(buffer_view) = device.0.next_with_timeout(&buffer_timeout) {
-                    let current_status = status.get_or_insert(Status {
-                        instant: buffer_view.instant,
-                        read_range: (buffer_view.read, buffer_view.read + 1),
-                        write_range: buffer_view.write_range,
-                        ring_length: buffer_view.ring_length,
-                        current_t: None,
-                    });
-                    current_status.read_range = (current_status.read_range.0, buffer_view.read + 1);
-                    current_status.write_range = buffer_view.write_range;
+                    if let Some(status) = status.as_mut() {
+                        status.raw_packets += 1;
+                        status.backlog = buffer_view.backlog();
+                        status.clutch_engaged = matches!(
+                            buffer_view.clutch,
+                            neuromorphic_drivers_rs::usb::Clutch::Engaged
+                        );
+                    } else {
+                        status = Some(Status {
+                            instant: buffer_view.instant,
+                            backlog: buffer_view.backlog(),
+                            raw_packets: 1,
+                            clutch_engaged: matches!(
+                                buffer_view.clutch,
+                                neuromorphic_drivers_rs::usb::Clutch::Engaged
+                            ),
+                            overflow_indices: Vec::new(),
+                            current_t: None,
+                        });
+                    }
                     let _ = available_raw_packets.get_or_insert_with(|| {
+                        let available_now = buffer_view.backlog() + 1;
                         if iterator_maximum_raw_packets == 0 {
-                            buffer_view.backlog() + 1
+                            available_now
                         } else {
-                            iterator_maximum_raw_packets.min(buffer_view.backlog() + 1)
+                            iterator_maximum_raw_packets.min(available_now)
                         }
                     });
-                    raw_packets += 1;
                     match &mut buffer {
                         Buffer::Adapter(adapter) => {
-                            adapter.push(buffer_view.slice);
-                            current_status.current_t = Some(adapter.current_t());
+                            adapter.push(buffer_view.first_after_overflow, buffer_view.slice);
+                            if let Some(status) = status.as_mut() {
+                                status.current_t = Some(adapter.current_t());
+                            }
                         }
                         Buffer::Bytes(bytes) => pyo3::Python::with_gil(|python| {
+                            if buffer_view.first_after_overflow {
+                                status
+                                    .as_mut()
+                                    .expect("status is always Some here")
+                                    .overflow_indices
+                                    .push(bytes.length());
+                            }
                             bytes.extend_from_slice(python, buffer_view.slice);
                         }),
                     }
                 }
-                if iterator_timeout.map_or_else(|| false, |timeout| start.elapsed() >= timeout)
-                    || available_raw_packets.map_or_else(
-                        || false,
-                        |available_raw_packets| raw_packets >= available_raw_packets,
-                    )
+                if iterator_timeout.map_or(false, |timeout| start.elapsed() >= timeout)
+                    || available_raw_packets.map_or(false, |available_raw_packets| {
+                        status
+                            .as_ref()
+                            .map_or(false, |status| status.raw_packets >= available_raw_packets)
+                    })
                 {
                     return pyo3::Python::with_gil(|python| {
                         let packet = match &mut buffer {
@@ -231,9 +253,10 @@ impl Device {
                             status.map(|status| {
                                 (
                                     (status.instant.elapsed() + duration_since_epoch).as_secs_f64(),
-                                    status.read_range,
-                                    status.write_range,
-                                    status.ring_length,
+                                    status.backlog,
+                                    status.raw_packets,
+                                    status.clutch_engaged,
+                                    status.overflow_indices,
                                     status.current_t,
                                 )
                             }),
@@ -262,7 +285,7 @@ impl Device {
         python: pyo3::Python,
         until: usize,
     ) -> pyo3::PyResult<()> {
-        let error_flag = slf.error_flag.clone();
+        let flag = slf.flag.clone();
         let device = DeviceReference(slf.device.as_ref().ok_or(
             pyo3::exceptions::PyRuntimeError::new_err("__next__ called after __exit__"),
         )?);
@@ -279,11 +302,8 @@ impl Device {
             |adapter| Buffer::Adapter(adapter.deref_mut()),
         );
         python.allow_threads(|| loop {
-            if let Some(error) = error_flag.load() {
-                return Err(pyo3::exceptions::PyRuntimeError::new_err(format!(
-                    "{error:?}"
-                )));
-            }
+            flag.load_error()
+                .map_err(|error| pyo3::exceptions::PyRuntimeError::new_err(format!("{error:?}")))?;
             if let Some(buffer_view) = device
                 .0
                 .next_with_timeout(&std::time::Duration::from_millis(0))
@@ -298,6 +318,10 @@ impl Device {
                 return Ok(());
             }
         })
+    }
+
+    fn overflow(slf: pyo3::PyRef<Self>) -> bool {
+        slf.flag.load_warning().is_some()
     }
 
     fn name(slf: pyo3::PyRef<Self>) -> pyo3::PyResult<String> {
@@ -325,7 +349,7 @@ impl Device {
         slf: pyo3::PyRef<Self>,
         python: pyo3::Python,
     ) -> pyo3::PyResult<pyo3::PyObject> {
-        Ok(pyo3::types::PyBytes::new(
+        Ok(pyo3::types::PyBytes::new_bound(
             python,
             &slf.device
                 .as_ref()
@@ -380,14 +404,14 @@ impl Device {
 
     fn update_configuration(
         slf: pyo3::PyRef<Self>,
-        type_and_configuration: (&str, &[u8]),
+        device_type: &str,
+        configuration: &[u8],
     ) -> pyo3::PyResult<()> {
         let configuration = neuromorphic_drivers_rs::Configuration::deserialize_bincode(
-            type_and_configuration
-                .0
+            device_type
                 .parse()
                 .map_err(|error| pyo3::exceptions::PyRuntimeError::new_err(format!("{error}")))?,
-            type_and_configuration.1,
+            configuration,
         )
         .map_err(|error| pyo3::exceptions::PyRuntimeError::new_err(format!("{error}")))?;
         slf.device
@@ -405,10 +429,7 @@ impl Device {
 }
 
 #[pyo3::pymodule]
-fn neuromorphic_drivers(
-    _py: pyo3::Python<'_>,
-    module: &pyo3::types::PyModule,
-) -> pyo3::PyResult<()> {
+fn neuromorphic_drivers(module: &pyo3::Bound<'_, pyo3::types::PyModule>) -> pyo3::PyResult<()> {
     module.add_class::<Device>()?;
     module.add_function(pyo3::wrap_pyfunction!(list_devices, module)?)?;
     Ok(())

@@ -13,7 +13,6 @@ backlogs = np.array([0 for _ in devices])
 while True:
     index = np.argmax(backlogs)
     status, packet = devices[index].__next__()
-    backlog = status.ring.backlog()
-    print(f"{index}: {round(status.delay() * 1e6)} µs, backlog: {backlog}")
+    print(f"{index}: {round(status.delay() * 1e6)} µs, backlog: {status.ring.backlog}")
     backlogs[:] += 1
-    backlogs[index] = backlog
+    backlogs[index] = status.ring.backlog

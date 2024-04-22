@@ -1,6 +1,3 @@
-import threading
-import typing
-
 import neuromorphic_drivers as nd
 import numpy as np
 import vispy.app
@@ -84,7 +81,7 @@ class Canvas(vispy.app.Canvas):
         self.program["u_projection"] = self.projection
         self.program["u_texture"] = self.texture
         self.program["u_t"] = 0
-        self.program["u_tau"] = 200000
+        self.program["u_tau"] = 100000
         self.coordinates = np.zeros(
             4,
             dtype=[("a_position", np.float32, 2), ("a_texcoord", np.float32, 2)],
@@ -147,15 +144,12 @@ class Canvas(vispy.app.Canvas):
                 )
             elif status.ring is not None and status.ring.current_t is not None:
                 self.program["u_t"] = np.float32(status.ring.current_t)
-            if status.ring is not None and status.ring.backlog() > 1000:
-                device.clear_backlog(until=0)
         self.texture.set_data(self.ts_and_ons)
         self.program.draw("triangle_strip")
 
 
 if __name__ == "__main__":
     nd.print_device_list()
-    camera_thread: typing.Optional[threading.Thread] = None
     with nd.open(iterator_timeout=FRAME_DURATION) as device:
         print(device.serial(), device.properties())
         canvas = Canvas(

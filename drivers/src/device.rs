@@ -1,4 +1,4 @@
-use crate::error;
+use crate::flag;
 use crate::usb;
 use rusb::UsbContext;
 
@@ -31,15 +31,16 @@ pub trait Usb: Sized {
 
     fn update_configuration(&self, configuration: Self::Configuration);
 
-    fn open<IntoError>(
+    fn open<IntoError, IntoWarning>(
         serial: &Option<&str>,
         configuration: Self::Configuration,
         usb_configuration: &usb::Configuration,
         event_loop: std::sync::Arc<usb::EventLoop>,
-        error_flag: error::Flag<IntoError>,
+        flag: flag::Flag<IntoError, IntoWarning>,
     ) -> Result<Self, Self::Error>
     where
-        IntoError: From<Self::Error> + Clone + Send + 'static;
+        IntoError: From<Self::Error> + Clone + Send + 'static,
+        IntoWarning: From<crate::usb::Overflow> + Clone + Send + 'static;
 
     fn next_with_timeout(&self, timeout: &std::time::Duration) -> Option<usb::BufferView>;
 

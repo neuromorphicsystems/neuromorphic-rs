@@ -2,6 +2,7 @@ use neuromorphic_drivers::types::SliceView;
 use numpy::IntoPyArray;
 
 use crate::structured_array;
+use pyo3::prelude::PyDictMethods;
 use pyo3::IntoPy;
 
 pub enum Adapter {
@@ -9,6 +10,8 @@ pub enum Adapter {
         inner: neuromorphic_drivers_rs::adapters::evt3::Adapter,
         dvs_events: Vec<u8>,
         trigger_events: Vec<u8>,
+        dvs_events_overflow_indices: Vec<usize>,
+        trigger_events_overflow_indices: Vec<usize>,
     },
 }
 
@@ -25,13 +28,21 @@ impl Adapter {
         }
     }
 
-    pub fn push(&mut self, slice: &[u8]) {
+    pub fn push(&mut self, first_after_overflow: bool, slice: &[u8]) {
         match self {
             Adapter::Evt3 {
                 inner,
                 dvs_events,
                 trigger_events,
+                dvs_events_overflow_indices,
+                trigger_events_overflow_indices,
             } => {
+                if first_after_overflow {
+                    dvs_events_overflow_indices
+                        .push(dvs_events.len() / structured_array::DVS_EVENTS_DTYPE.size());
+                    trigger_events_overflow_indices
+                        .push(dvs_events.len() / structured_array::TRIGGER_EVENTS_DTYPE.size());
+                }
                 let events_lengths = inner.events_lengths(slice);
                 dvs_events.reserve_exact(events_lengths.dvs);
                 trigger_events.reserve_exact(events_lengths.trigger);
@@ -54,45 +65,82 @@ impl Adapter {
                 inner: _,
                 dvs_events,
                 trigger_events,
+                dvs_events_overflow_indices,
+                trigger_events_overflow_indices,
             } => {
-                let dict = pyo3::types::PyDict::new(python);
+                let dict = pyo3::types::PyDict::new_bound(python);
                 if !dvs_events.is_empty() {
                     let dvs_events_array = {
                         let mut taken_dvs_events = Vec::new();
                         std::mem::swap(dvs_events, &mut taken_dvs_events);
-                        taken_dvs_events.into_pyarray(python)
+                        taken_dvs_events.into_pyarray_bound(python)
                     };
                     let description = structured_array::DVS_EVENTS_DTYPE.into_py(python);
-                    let dvs_events_array_pointer = dvs_events_array.as_array_ptr();
-                    unsafe {
-                        *(*dvs_events_array_pointer).dimensions /=
-                            structured_array::DVS_EVENTS_DTYPE.size() as isize;
-                        *(*dvs_events_array_pointer).strides =
-                            structured_array::DVS_EVENTS_DTYPE.size() as isize;
-                        let previous_description = (*dvs_events_array_pointer).descr;
-                        (*dvs_events_array_pointer).descr = description;
-                        pyo3::ffi::Py_DECREF(previous_description as *mut pyo3::ffi::PyObject);
+                    use numpy::prelude::PyUntypedArrayMethods;
+                    {
+                        let dvs_events_array_pointer = dvs_events_array.as_array_ptr();
+                        unsafe {
+                            *(*dvs_events_array_pointer).dimensions /=
+                                structured_array::DVS_EVENTS_DTYPE.size() as isize;
+                            *(*dvs_events_array_pointer).strides =
+                                structured_array::DVS_EVENTS_DTYPE.size() as isize;
+                            let previous_description = (*dvs_events_array_pointer).descr;
+                            (*dvs_events_array_pointer).descr = description;
+                            pyo3::ffi::Py_DECREF(previous_description as *mut pyo3::ffi::PyObject);
+                        }
                     }
                     dict.set_item("dvs_events", dvs_events_array)?;
+                    if !dvs_events_overflow_indices.is_empty() {
+                        let dvs_events_overflow_indices_array = {
+                            let mut taken_dvs_events_overflow_indices = Vec::new();
+                            std::mem::swap(
+                                dvs_events_overflow_indices,
+                                &mut taken_dvs_events_overflow_indices,
+                            );
+                            taken_dvs_events_overflow_indices.into_pyarray_bound(python)
+                        };
+                        dict.set_item(
+                            "dvs_events_overflow_indices",
+                            dvs_events_overflow_indices_array,
+                        )?;
+                    }
                 }
                 if !trigger_events.is_empty() {
                     let trigger_events_array = {
                         let mut taken_trigger_events = Vec::new();
                         std::mem::swap(trigger_events, &mut taken_trigger_events);
-                        taken_trigger_events.into_pyarray(python)
+                        taken_trigger_events.into_pyarray_bound(python)
                     };
                     let description = structured_array::TRIGGER_EVENTS_DTYPE.into_py(python);
-                    let trigger_events_array_pointer = trigger_events_array.as_array_ptr();
-                    unsafe {
-                        *(*trigger_events_array_pointer).dimensions /=
-                            structured_array::TRIGGER_EVENTS_DTYPE.size() as isize;
-                        *(*trigger_events_array_pointer).strides =
-                            structured_array::TRIGGER_EVENTS_DTYPE.size() as isize;
-                        let previous_description = (*trigger_events_array_pointer).descr;
-                        (*trigger_events_array_pointer).descr = description;
-                        pyo3::ffi::Py_DECREF(previous_description as *mut pyo3::ffi::PyObject);
+                    use numpy::prelude::PyUntypedArrayMethods;
+                    {
+                        let trigger_events_array_pointer = trigger_events_array.as_array_ptr();
+                        unsafe {
+                            *(*trigger_events_array_pointer).dimensions /=
+                                structured_array::TRIGGER_EVENTS_DTYPE.size() as isize;
+                            *(*trigger_events_array_pointer).strides =
+                                structured_array::TRIGGER_EVENTS_DTYPE.size() as isize;
+                            let previous_description = (*trigger_events_array_pointer).descr;
+                            (*trigger_events_array_pointer).descr = description;
+                            pyo3::ffi::Py_DECREF(previous_description as *mut pyo3::ffi::PyObject);
+                        }
                     }
+
                     dict.set_item("trigger_events", trigger_events_array)?;
+                    if !trigger_events_overflow_indices.is_empty() {
+                        let trigger_events_overflow_indices_array = {
+                            let mut taken_trigger_events_overflow_indices = Vec::new();
+                            std::mem::swap(
+                                trigger_events_overflow_indices,
+                                &mut taken_trigger_events_overflow_indices,
+                            );
+                            taken_trigger_events_overflow_indices.into_pyarray_bound(python)
+                        };
+                        dict.set_item(
+                            "trigger_events_overflow_indices",
+                            trigger_events_overflow_indices_array,
+                        )?;
+                    }
                 }
                 Ok(dict.into())
             }
@@ -107,6 +155,8 @@ impl From<neuromorphic_drivers::Adapter> for Adapter {
                 inner,
                 dvs_events: Vec::new(),
                 trigger_events: Vec::new(),
+                dvs_events_overflow_indices: Vec::new(),
+                trigger_events_overflow_indices: Vec::new(),
             },
         }
     }

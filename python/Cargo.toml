@@ -8,17 +8,17 @@ name = "neuromorphic_drivers"
 crate-type = ["cdylib"]
 
 [dependencies]
-neuromorphic-drivers = "0.12.0"
-numpy = "0.19"
+neuromorphic-drivers = {path = "../drivers"}
+numpy = "0.21.0"
 paste = "1.0"
-pyo3 = {version = "0.19", features = ["extension-module"]}
+pyo3 = {version = "0.21", features = ["extension-module"]}
 
 [build-dependencies]
 cc = "1.0"
-neuromorphic-drivers = "0.12.0"
+neuromorphic-drivers = {path = "../drivers"}
 paste = "1.0"
 reflect = {path = "../reflect"}
 serde = {version = "1.0", features = ["derive"]}
 serde_json = "1.0"
 serde-generate = "0.25.1"
-toml = {version = "0.7", features = ["parse"]}
+toml = {version = "0.8", features = ["parse"]}

@@ -1,7 +1,7 @@
 use crate::adapters;
 use crate::device::TemperatureCelsius;
 use crate::device::Usb;
-use crate::error;
+use crate::flag;
 use crate::usb;
 use rusb::UsbContext;
 
@@ -115,7 +115,7 @@ macro_rules! register {
                 configuration: Option<Configuration>,
                 usb_configuration: Option<usb::Configuration>,
                 event_loop: std::sync::Arc<usb::EventLoop>,
-                error_flag: error::Flag<Error>,
+                flag: flag::Flag<Error, usb::Overflow>,
             ) -> Result<Device, Error>
             {
                 match configuration {
@@ -130,7 +130,7 @@ macro_rules! register {
                                         .as_ref()
                                         .unwrap_or(&$module::Device::DEFAULT_USB_CONFIGURATION),
                                         event_loop.clone(),
-                                        error_flag.clone(),
+                                        flag.clone(),
                                     )
                                     .map(|device| paste::paste! {Device::[<$module:camel>](device)})
                                     .map_err(|error| Error::from(error).unpack())?
@@ -147,7 +147,7 @@ macro_rules! register {
                                 .as_ref()
                                 .unwrap_or(&$module::Device::DEFAULT_USB_CONFIGURATION),
                                 event_loop.clone(),
-                                error_flag.clone(),
+                                flag.clone(),
                             ) {
                                 Ok(device) => return Ok(Device::[<$module:camel>](device)),
                                 Err(error) => match Error::from(error).unpack() {

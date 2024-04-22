@@ -162,9 +162,9 @@ The fields of the USB configuration are identical across devices, but the defaul
 ```py
 @dataclasses.dataclass
 class UsbConfiguration:
-    buffer_size: serde.type.uint64 = 131072 # size of each buffer in the ring, in bytes
-    ring_size: serde.type.uint64 = 4096 # number of buffers in the ring, the total size is ring_size * buffer_size
-    transfer_queue_size: serde.type.uint64 = 32 # number of libusb transfers submitted in parallel
+    buffer_length: serde.type.uint64 = 131072 # size of each buffer in the ring, in bytes
+    ring_length: serde.type.uint64 = 4096 # number of buffers in the ring, the total size is ring_length * buffer_length
+    transfer_queue_length: serde.type.uint64 = 32 # number of libusb transfers submitted in parallel
     allow_dma: bool = False # whether to enable Direct Memory Access
 ```
 
@@ -172,7 +172,7 @@ class UsbConfiguration:
 
 See _python/examples_ for different usage examples.
 
-_python/examples/any_display.py_ implements a live event viewer with exponential decays caculated by the GPU. It requires vispy and glfw (`pip install vispy glfw`).
+_python/examples/any_display.py_ implements a live event viewer with exponential decays caculated by the GPU. It requires vispy and glfw (`pip install vispy glfw pyopengl`).
 
 _python/examples/evk4_plot_hot_pixels_ generates plots and require Plotly (`pip install plotly pandas kaleido`).
 

@@ -180,9 +180,8 @@ class Canvas(vispy.app.Canvas):
             self.backlogs[index] = 0
         else:
             assert packet is not None
-            backlog = status.ring.backlog()
             self.backlogs[:] += 1
-            self.backlogs[index] = backlog
+            self.backlogs[index] = status.ring.backlog
             if "dvs_events" in packet:
                 assert status.ring is not None and status.ring.current_t is not None
                 self.encoders[index].write(packet["dvs_events"])

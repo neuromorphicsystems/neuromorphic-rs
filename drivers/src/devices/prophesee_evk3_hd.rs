@@ -1,9 +1,11 @@
 use crate::adapters;
 use crate::configuration;
 use crate::device;
-use crate::error;
+use crate::flag;
 use crate::properties;
 use crate::usb;
+
+use device::Usb;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 pub struct Biases {
@@ -64,6 +66,23 @@ pub struct Device {
     serial: String,
 }
 
+pub const PROPERTIES: properties::Camera<Configuration> = Device::PROPERTIES;
+pub const DEFAULT_CONFIGURATION: Configuration = Device::PROPERTIES.default_configuration;
+pub const DEFAULT_USB_CONFIGURATION: usb::Configuration = Device::DEFAULT_USB_CONFIGURATION;
+pub fn open<IntoError, IntoWarning>(
+    serial: &Option<&str>,
+    configuration: Configuration,
+    usb_configuration: &usb::Configuration,
+    event_loop: std::sync::Arc<usb::EventLoop>,
+    flag: flag::Flag<IntoError, IntoWarning>,
+) -> Result<Device, Error>
+where
+    IntoError: From<Error> + Clone + Send + 'static,
+    IntoWarning: From<usb::Overflow> + Clone + Send + 'static,
+{
+    Device::open(serial, configuration, usb_configuration, event_loop, flag)
+}
+
 impl device::Usb for Device {
     type Adapter = adapters::evt3::Adapter;
 
@@ -102,9 +121,9 @@ impl device::Usb for Device {
     };
 
     const DEFAULT_USB_CONFIGURATION: usb::Configuration = usb::Configuration {
-        buffer_size: 1 << 17,
-        ring_size: 1 << 12,
-        transfer_queue_size: 1 << 5,
+        buffer_length: 1 << 17,
+        ring_length: 1 << 12,
+        transfer_queue_length: 1 << 5,
         allow_dma: false,
     };
 
@@ -127,15 +146,16 @@ impl device::Usb for Device {
         self.configuration_updater.update(configuration);
     }
 
-    fn open<IntoError>(
+    fn open<IntoError, IntoWarning>(
         serial: &Option<&str>,
         configuration: Self::Configuration,
         usb_configuration: &usb::Configuration,
         event_loop: std::sync::Arc<usb::EventLoop>,
-        error_flag: error::Flag<IntoError>,
+        flag: flag::Flag<IntoError, IntoWarning>,
     ) -> Result<Self, Self::Error>
     where
         IntoError: From<Self::Error> + Clone + Send + 'static,
+        IntoWarning: From<crate::usb::Overflow> + Clone + Send + 'static,
     {
         let (handle, serial) = Self::handle_from_serial(event_loop.context(), serial)?;
         std::thread::sleep(std::time::Duration::from_millis(150));
@@ -337,14 +357,18 @@ impl device::Usb for Device {
         .write(&handle)?;
 
         let handle = std::sync::Arc::new(handle);
-        let ring_error_flag = error_flag.clone();
+        let error_flag = flag.clone();
+        let warning_flag = flag.clone();
         Ok(Device {
             handle: handle.clone(),
             ring: usb::Ring::new(
                 handle.clone(),
                 usb_configuration,
                 move |usb_error| {
-                    ring_error_flag.store_if_not_set(Self::Error::from(usb_error));
+                    error_flag.store_error_if_not_set(Self::Error::from(usb_error));
+                },
+                move |overflow| {
+                    warning_flag.store_warning_if_not_set(overflow);
                 },
                 event_loop,
                 usb::TransferType::Bulk {
@@ -354,14 +378,14 @@ impl device::Usb for Device {
             )?,
             configuration_updater: configuration::Updater::new(
                 configuration,
-                ConfigurationUpdaterContext { handle, error_flag },
+                ConfigurationUpdaterContext { handle, flag },
                 |context, previous_configuration, configuration| {
                     if let Err(error) = update_configuration(
                         &context.handle,
                         Some(previous_configuration),
                         configuration,
                     ) {
-                        context.error_flag.store_if_not_set(error);
+                        context.flag.store_error_if_not_set(error);
                     }
                     context
                 },
@@ -763,12 +787,13 @@ fn update_configuration(
     Ok(())
 }
 
-struct ConfigurationUpdaterContext<IntoError>
+struct ConfigurationUpdaterContext<IntoError, IntoWarning>
 where
     IntoError: From<Error> + Clone + Send,
+    IntoWarning: From<crate::usb::Overflow> + Clone + Send,
 {
     handle: std::sync::Arc<rusb::DeviceHandle<rusb::Context>>,
-    error_flag: error::Flag<IntoError>,
+    flag: flag::Flag<IntoError, IntoWarning>,
 }
 
 struct RuntimeRegister {
