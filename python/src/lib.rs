@@ -247,12 +247,15 @@ impl Device {
                         };
                         let duration_since_epoch = std::time::SystemTime::now()
                             .duration_since(std::time::SystemTime::UNIX_EPOCH)
-                            .unwrap_or(std::time::Duration::from_secs(0));
+                            .unwrap_or(std::time::Duration::new(0, 0));
                         Ok((
                             duration_since_epoch.as_secs_f64(),
                             status.map(|status| {
                                 (
-                                    (status.instant.elapsed() + duration_since_epoch).as_secs_f64(),
+                                    (duration_since_epoch
+                                        .checked_sub(status.instant.elapsed())
+                                        .unwrap_or(std::time::Duration::new(0, 0)))
+                                    .as_secs_f64(),
                                     status.backlog,
                                     status.raw_packets,
                                     status.clutch_engaged,
