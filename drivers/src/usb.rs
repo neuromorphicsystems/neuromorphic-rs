@@ -783,6 +783,15 @@ impl Ring {
         (shared.write_range.start + shared.buffers.len() - 1 - shared.read) % shared.buffers.len()
     }
 
+    pub fn clutch(&self) -> Clutch {
+        let shared = self
+            .context
+            .shared
+            .lock()
+            .expect("ring context's lock is not poisoned");
+        shared.clutch
+    }
+
     pub fn next_with_timeout(&self, duration: &std::time::Duration) -> Option<BufferView> {
         if self
             .active_buffer_view

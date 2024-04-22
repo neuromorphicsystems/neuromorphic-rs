@@ -402,6 +402,10 @@ impl device::Usb for Device {
         self.ring.backlog()
     }
 
+    fn clutch(&self) -> usb::Clutch {
+        self.ring.clutch()
+    }
+
     fn serial(&self) -> String {
         self.serial.clone()
     }

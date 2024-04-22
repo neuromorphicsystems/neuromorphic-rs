@@ -46,6 +46,8 @@ pub trait Usb: Sized {
 
     fn backlog(&self) -> usize;
 
+    fn clutch(&self) -> usb::Clutch;
+
     fn serial(&self) -> String;
 
     fn chip_firmware_configuration(&self) -> Self::Configuration;
