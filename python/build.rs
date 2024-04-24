@@ -868,19 +868,27 @@ fn main() {
             .unwrap()
             .as_str()
             .unwrap();
-        let pyproject_toml = std::fs::read_to_string("pyproject.toml")
-            .unwrap()
-            .parse::<toml::Value>()
-            .unwrap();
-        let pyproject_version = pyproject_toml
-            .get("project")
-            .unwrap()
-            .get("version")
-            .unwrap()
-            .as_str()
-            .unwrap();
-        if cargo_version != pyproject_version {
-            panic!("the cargo version ({cargo_version}) and the pyproject version ({pyproject_version}) are different");
+        let pyproject_toml_contents =
+            std::fs::read_to_string("pyproject.toml").ok().or_else(|| {
+                std::fs::canonicalize("pyproject.toml")
+                    .ok()
+                    .map(|path| path.parent().map(|parent| parent.to_owned()))
+                    .flatten()
+                    .map(|parent| std::fs::read_to_string(parent.join("pyproject.toml")).ok())
+                    .flatten()
+            });
+        if let Some(pyproject_toml_contents) = pyproject_toml_contents {
+            let pyproject_toml = pyproject_toml_contents.parse::<toml::Value>().unwrap();
+            let pyproject_version = pyproject_toml
+                .get("project")
+                .unwrap()
+                .get("version")
+                .unwrap()
+                .as_str()
+                .unwrap();
+            if cargo_version != pyproject_version {
+                panic!("the cargo version ({cargo_version}) and the pyproject version ({pyproject_version}) are different");
+            }
         }
     }
     if std::env::var("TARGET").unwrap().contains("apple") {
