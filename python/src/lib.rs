@@ -71,7 +71,7 @@ impl Device {
         usb_configuration: Option<&[u8]>,
         iterator_timeout: Option<f64>,
     ) -> pyo3::PyResult<Self> {
-        let (flag, event_loop) = neuromorphic_drivers_rs::event_loop_and_flag()
+        let (flag, event_loop) = neuromorphic_drivers_rs::flag_and_event_loop()
             .map_err(|error| pyo3::exceptions::PyRuntimeError::new_err(format!("{error}")))?;
         let device = neuromorphic_drivers_rs::open(
             serial,

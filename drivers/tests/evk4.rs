@@ -2,7 +2,7 @@ use neuromorphic_drivers::UsbDevice;
 
 #[test]
 fn read() -> Result<(), neuromorphic_drivers::Error> {
-    let (flag, event_loop) = neuromorphic_drivers::event_loop_and_flag()?;
+    let (flag, event_loop) = neuromorphic_drivers::flag_and_event_loop()?;
     let device = neuromorphic_drivers::prophesee_evk4::open(
         &None,
         neuromorphic_drivers::prophesee_evk4::DEFAULT_CONFIGURATION,

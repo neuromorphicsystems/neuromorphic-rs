@@ -28,7 +28,7 @@ pub use libusb1_sys;
 pub use neuromorphic_types as types;
 pub use rusb;
 
-pub fn event_loop_and_flag(
+pub fn flag_and_event_loop(
 ) -> Result<(Flag<Error, usb::Overflow>, std::sync::Arc<usb::EventLoop>), usb::Error> {
     let flag = Flag::new();
     let event_loop = std::sync::Arc::new(usb::EventLoop::new(
