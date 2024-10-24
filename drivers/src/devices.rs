@@ -347,4 +347,4 @@ macro_rules! register {
     };
 }
 
-register! { prophesee_evk3_hd, prophesee_evk4 }
+register! { prophesee_evk3_hd, prophesee_evk4, centuryarks_silkyevcamhd }
